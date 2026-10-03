@@ -174,6 +174,51 @@
     #undoBar { background: #3b82f6; color: white; padding: 0.5rem; text-align: center; font-weight: bold; font-size: 0.875rem; cursor: pointer; }
     #crashBanner, #storageBanner { background: #ef4444; color: white; padding: 0.5rem; text-align: center; font-weight: bold; font-size: 0.875rem; }
     #periodBanner { background: #fbbf24; color: black; padding: 0.75rem; font-weight: 900; border: 2px solid #0f172a; border-radius: 0.5rem; margin-top: 1rem; display: flex; justify-content: space-between; align-items: center;}
+
+    /* v4 Sportsmanship Badges */
+    .badge-strip {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      background: #f1f5f9;
+      padding: 6px;
+      border-radius: 8px;
+      margin-top: 6px;
+      border: 1px solid #cbd5e1;
+    }
+    .badge-btn {
+      background: #ffffff;
+      border: 2px solid #0f172a;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 16px;
+      min-width: 40px;
+      min-height: 40px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+    }
+    .badge-btn:active {
+      transform: scale(0.95);
+      background: #fde047;
+    }
+    .card-badges {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+    .badge-pill {
+      background: #fef9c3;
+      border: 1px solid #eab308;
+      color: #713f12;
+      padding: 2px 6px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -804,6 +849,7 @@
     let manualOutId = null;
     let manualInId = null;
     let wakeLock = null;
+    let activeBadgeDrawerPid = null;
 
     // Save initial HTML immediately before any render
     const APP_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
@@ -1161,8 +1207,28 @@
 
          let actionButtons = '';
          if (isField) {
-            actionButtons = `<button data-action="scoreUsBtn" data-id="${r.id}" class="sun-btn bg-emerald-600" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.25rem;">⚽ Goal</button>`;
+            actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" class="sun-btn bg-emerald-600" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.25rem;">⚽ Goal</button>`;
          }
+         actionButtons += `<button data-action="toggleBadgeDrawer" data-id="${r.id}" class="sun-btn" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem;">+ 🌟 Badge</button>`;
+
+         const badgeCounts = { hustle: 0, save: 0, pass: 0, kick: 0, teammate: 0 };
+         (p.badges || []).forEach(b => {
+           if (badgeCounts[b.type] !== undefined) badgeCounts[b.type]++;
+         });
+         const badgePills = Object.entries(badgeCounts)
+           .filter(([_, count]) => count > 0)
+           .map(([type, count]) => `<span class="badge-pill">${Engine.BADGE_MAP[type].icon} ${count}</span>`)
+           .join(' ');
+
+         const drawerHtml = activeBadgeDrawerPid === r.id ? `
+           <div class="badge-strip" data-id="${r.id}">
+             <button class="badge-btn" data-action="awardBadge" data-id="${r.id}" data-badge="hustle" title="Great Hustle">⚡</button>
+             <button class="badge-btn" data-action="awardBadge" data-id="${r.id}" data-badge="save" title="Big Save">🛡️</button>
+             <button class="badge-btn" data-action="awardBadge" data-id="${r.id}" data-badge="pass" title="Great Pass">🤝</button>
+             <button class="badge-btn" data-action="awardBadge" data-id="${r.id}" data-badge="kick" title="Super Kick">🚀</button>
+             <button class="badge-btn" data-action="awardBadge" data-id="${r.id}" data-badge="teammate" title="Star Teammate">🌟</button>
+           </div>
+         ` : '';
 
          let html = `
            <div class="${classes}" data-action="${isField ? 'tapField' : 'tapBench'}" data-id="${r.id}">
@@ -1172,7 +1238,9 @@
                  ${!isField && p.resting ? '<span class="text-xs bg-slate-200 px-1 rounded font-bold">REST</span>' : ''}
                </div>
                <div class="text-xs font-bold text-slate-700">Period: ${periodSpan} | Total: ${totalSpan}</div>
+               ${badgePills ? `<div class="card-badges mb-1">${badgePills}</div>` : ''}
                ${actionButtons}
+               ${drawerHtml}
              </div>
              <div class="text-right">
                <div class="text-xs uppercase font-bold">${timeLabel}</div>
@@ -1254,6 +1322,19 @@
       else if (action === 'openSetup') openSetup();
       else if (action === 'closeSetup') closeSetup();
       else if (action === 'saveSetup') saveSetup();
+      else if (action === 'toggleBadgeDrawer') {
+        activeBadgeDrawerPid = activeBadgeDrawerPid === id ? null : id;
+        renderAll();
+      }
+      else if (action === 'awardBadge') {
+        const badgeType = btn.getAttribute('data-badge');
+        state = Engine.awardBadge(state, id, badgeType, Date.now());
+        activeBadgeDrawerPid = null;
+        save();
+        manageWakeLock();
+        renderAll();
+        if ('vibrate' in navigator) navigator.vibrate(40);
+      }
       else if (action === 'advancePeriodConfirm') advancePeriodConfirm();
       else if (action === 'advancePeriod') { closeModal(); dispatch('advancePeriod'); }
       else if (action === 'resetMatchConfirm') resetMatchConfirm();
