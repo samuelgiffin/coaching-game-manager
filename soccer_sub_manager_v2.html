@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#ffffff">
+  <title>Soccer Sub Manager - Sunlight Edition</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&family=JetBrains+Mono:wght@700;800&display=swap" rel="stylesheet">
+
+  <style>
+    /* Direct sunlight optimization: Maximum contrast, heavy borders, zero faint grays */
+    :root {
+      --pitch-green: #15803d;
+      --pitch-green-bg: #dcfce7;
+      --crimson-out: #b91c1c;
+      --crimson-bg: #fee2e2;
+      --cobalt-rec: #1d4ed8;
+      --cobalt-bg: #dbeafe;
+      --amber-queue: #b45309;
+      --amber-bg: #fef3c7;
+      --card-border: #0f172a;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    .font-mono-nums {
+      font-family: 'JetBrains Mono', monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Pinned queue attention pulse in bright outdoor light */
+    @keyframes outdoorGaze {
+      0%, 100% {
+        box-shadow: 0 0 0 3px #d97706;
+        border-color: #b45309;
+      }
+      50% {
+        box-shadow: 0 0 0 5px #f59e0b;
+        border-color: #78350f;
+      }
+    }
+
+    .queued-priority-active {
+      animation: outdoorGaze 2.2s infinite ease-in-out;
+    }
+
+    /* High-contrast tactile buttons */
+    .sun-btn {
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      border-radius: 12px;
+      border: 2px solid #0f172a;
+      box-shadow: 0 3px 0 #0f172a;
+      transition: transform 0.08s ease, box-shadow 0.08s ease;
+    }
+
+    .sun-btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 #0f172a;
+    }
+
+    /* Anti-glare player cards */
+    .sun-card {
+      background-color: #ffffff;
+      border: 2px solid #0f172a;
+      box-shadow: 0 2px 0 #0f172a;
+      border-radius: 12px;
+      transition: background-color 0.12s ease;
+    }
+  </style>
+</head>
+<body class="min-h-screen pb-32">
+
+  <header class="sticky top-0 z-40 bg-white border-b-4 border-slate-900 px-3.5 py-2.5 shadow-md">
+    <div class="max-w-md mx-auto">
+      <div class="flex items-center justify-between gap-2">
+        
+        <!-- Period & Main Match Clock -->
+        <div>
+          <div class="flex items-center gap-1.5 mb-0.5">
+            <span id="periodBadge" class="text-xs uppercase tracking-wider font-black px-2 py-0.5 rounded-md bg-slate-900 text-white border border-slate-900">
+              Period 1 / 4
+            </span>
+            <span id="quarterLengthLabel" class="text-[11px] font-bold text-slate-800 bg-slate-200 px-1.5 py-0.5 rounded">
+              8m periods
+            </span>
+          </div>
+          <div id="clockDisplay" class="font-mono-nums text-4xl font-black text-black tracking-tight leading-none">
+            08:00
+          </div>
+        </div>
+
+        <!-- Clock Play/Pause & Action Controls -->
+        <div class="flex items-center gap-2">
+          <button id="clockBtn" onclick="toggleClock()" class="sun-btn px-4 py-2 text-sm bg-emerald-600 text-white hover:bg-emerald-500 active:bg-emerald-700 min-h-[48px]">
+            <svg id="playPauseIcon" class="w-5 h-5 mr-1.5 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <span id="clockBtnText">START</span>
+          </button>
+
+          <!-- Settings Button -->
+          <button onclick="openSetupModal()" title="Roster & Rules Setup" class="sun-btn p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-900 min-h-[48px] min-w-[48px]">
+            <svg class="w-6 h-6 stroke-slate-900 fill-none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          </button>
+
+          <!-- Direct Download App HTML Button -->
+          <button onclick="downloadSelfHtml()" title="Save App HTML directly to phone" class="sun-btn p-2.5 bg-blue-100 hover:bg-blue-200 text-blue-900 min-h-[48px] min-w-[48px]">
+            <svg class="w-6 h-6 stroke-blue-950 fill-none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-md mx-auto px-3.5 pt-3.5 space-y-4">
+
+    <!-- Period End Announcement Banner -->
+    <div id="periodEndBanner" class="hidden p-3.5 bg-amber-400 border-2 border-slate-900 text-slate-950 font-black rounded-xl shadow-[0_3px_0_#0f172a] flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-xl">⏱</span>
+        <span class="text-sm">Period completed! Advance to next.</span>
+      </div>
+      <button onclick="advancePeriodPrompt()" class="sun-btn px-3 py-1.5 bg-slate-950 text-white text-xs min-h-[38px]">
+        Next Period →
+      </button>
+    </div>
+
+    <section id="recommendationCard" class="sun-card p-3.5 bg-blue-50 border-2 border-blue-900 shadow-[0_3px_0_#1e3a8a]">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-1.5">
+          <span class="w-3 h-3 rounded-full bg-blue-700 ring-2 ring-blue-300"></span>
+          <h2 class="text-xs font-black uppercase tracking-wider text-blue-950">Recommended On-The-Fly Sub</h2>
+        </div>
+        <span class="text-[11px] font-black uppercase bg-blue-200 border border-blue-400 text-blue-950 px-2 py-0.5 rounded">
+          Fair Play Time
+        </span>
+      </div>
+
+      <!-- Out vs In Comparison Grid -->
+      <div class="grid grid-cols-2 gap-2 bg-white p-2.5 rounded-xl border-2 border-slate-900">
+        <!-- OUT Candidate -->
+        <div class="border-r-2 border-slate-200 pr-2">
+          <div class="flex items-center gap-1 mb-1">
+            <span class="text-[11px] font-black bg-rose-700 text-white px-1.5 py-0.5 rounded border border-rose-900">OUT</span>
+            <span id="recOutName" class="font-black text-base text-slate-950 truncate">--</span>
+          </div>
+          <div class="text-xs font-bold text-slate-700 space-y-0.5">
+            <div>Shift: <span id="recOutShift" class="font-mono-nums text-black">00:00</span></div>
+            <div>Period: <span id="recOutPeriod" class="font-mono-nums text-black">00:00</span></div>
+          </div>
+        </div>
+
+        <!-- IN Candidate -->
+        <div class="pl-1">
+          <div class="flex items-center gap-1 mb-1">
+            <span class="text-[11px] font-black bg-emerald-700 text-white px-1.5 py-0.5 rounded border border-emerald-900">IN</span>
+            <span id="recInName" class="font-black text-base text-slate-950 truncate">--</span>
+          </div>
+          <div class="text-xs font-bold text-slate-700 space-y-0.5">
+            <div>Sat: <span id="recInSat" class="font-mono-nums text-black">00:00</span></div>
+            <div>Period: <span id="recInPeriod" class="font-mono-nums text-black">00:00</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons (Min 48px touch height) -->
+      <div class="grid grid-cols-5 gap-2 mt-3">
+        <button onclick="applyRecommendation()" class="col-span-3 sun-btn bg-blue-700 hover:bg-blue-600 text-white text-xs sm:text-sm">
+          <svg class="w-5 h-5 mr-1 fill-none stroke-current" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+          Make This Sub
+        </button>
+        <button onclick="skipRecommendedPlayer()" class="col-span-2 sun-btn bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs sm:text-sm" title="Skip this player now, but keep them #1 in queue next">
+          ⏭ Skip (Next)
+        </button>
+      </div>
+
+      <!-- Pinned Queue Status Banner -->
+      <div id="queueNotice" class="hidden mt-2.5 p-2 bg-amber-100 border-2 border-amber-800 rounded-lg text-xs font-bold text-amber-950 flex items-center justify-between">
+        <span>⚡ <strong id="queueNoticeName">Player</strong> is resting: pinned <u class="font-black">#1 in queue</u> for next sub.</span>
+      </div>
+    </section>
+
+    <div id="emptyRosterCard" class="hidden sun-card p-6 text-center bg-white border-dashed border-4 border-slate-400 my-4">
+      <div class="w-12 h-12 mx-auto rounded-full bg-slate-100 border-2 border-slate-900 flex items-center justify-center text-2xl mb-2">
+        ⚽
+      </div>
+      <h3 class="text-lg font-black text-slate-900 mb-1">Roster is empty</h3>
+      <p class="text-xs font-bold text-slate-600 mb-4">Add your players (up to 11) to automatically track and balance play time.</p>
+      <button onclick="openSetupModal()" class="sun-btn px-6 py-2.5 bg-emerald-600 text-white text-sm">
+        + Enter Team Roster
+      </button>
+    </div>
+
+    <section>
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-xs font-black uppercase tracking-wider text-slate-950 flex items-center gap-1.5">
+          <span class="w-3 h-3 rounded-full bg-emerald-600 border border-slate-900"></span>
+          <span>On Field (<span id="fieldCountDisplay">0</span> / <span id="targetFieldDisplay">0</span>)</span>
+        </h3>
+        <span class="text-[11px] font-extrabold text-slate-600">Tap player to manual sub</span>
+      </div>
+      <div id="fieldList" class="space-y-2"></div>
+    </section>
+
+    <section>
+      <div class="flex items-center justify-between mb-2 mt-4">
+        <h3 class="text-xs font-black uppercase tracking-wider text-slate-950 flex items-center gap-1.5">
+          <span class="w-3 h-3 rounded-full bg-slate-400 border border-slate-900"></span>
+          <span>Bench (<span id="benchCountDisplay">0</span>)</span>
+        </h3>
+        <span class="text-[11px] font-extrabold text-slate-600">Tap to queue / manual sub</span>
+      </div>
+      <div id="benchList" class="space-y-2"></div>
+    </section>
+
+    <div class="pt-4 border-t-2 border-slate-300 flex items-center justify-between gap-2">
+      <button onclick="advancePeriodPrompt()" class="flex-1 sun-btn bg-white hover:bg-slate-100 text-slate-900 text-xs">
+        Advance to Next Period →
+      </button>
+      <button onclick="resetMatchPrompt()" class="sun-btn px-3 bg-rose-100 hover:bg-rose-200 text-rose-900 text-xs">
+        Reset Match
+      </button>
+    </div>
+  </main>
+
+  <div id="manualSwapBar" class="hidden fixed bottom-3 left-3 right-3 max-w-md mx-auto sun-card p-2.5 bg-slate-900 text-white border-2 border-slate-900 z-50 flex items-center justify-between gap-2 shadow-2xl">
+    <div class="text-xs leading-tight truncate">
+      <div class="text-slate-300 font-bold uppercase text-[10px]">Manual Sub Selection:</div>
+      <div id="manualSwapSummary" class="font-black text-white text-sm truncate">Tap 1 Out & 1 In</div>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <button id="manualSwapExecuteBtn" disabled onclick="executeManualSwap()" class="sun-btn px-4 py-1.5 bg-blue-600 disabled:opacity-40 disabled:pointer-events-none text-white text-xs">
+        Swap
+      </button>
+      <button onclick="clearManualSelection()" class="sun-btn px-2.5 py-1.5 bg-slate-700 text-white text-xs">
+        ✕
+      </button>
+    </div>
+  </div>
+
+  <div id="customDialog" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white border-4 border-slate-900 w-full max-w-xs rounded-2xl p-4 shadow-[0_6px_0_#0f172a]">
+      <h4 id="dialogTitle" class="text-base font-black text-slate-950 mb-1">Confirm</h4>
+      <p id="dialogMessage" class="text-xs font-bold text-slate-700 mb-4 leading-relaxed">Are you sure?</p>
+      <div class="flex items-center justify-end gap-2" id="dialogButtons"></div>
+    </div>
+  </div>
+
+  <div id="setupModal" class="hidden fixed inset-0 z-50 bg-white/95 overflow-y-auto p-4">
+    <div class="max-w-md mx-auto pb-12">
+      
+      <div class="flex items-center justify-between pb-3 border-b-2 border-slate-900 mb-4">
+        <div>
+          <h2 class="text-xl font-black text-slate-950">Match & Roster Setup</h2>
+          <p class="text-xs font-bold text-slate-600">Enter your lineup (up to 11 players)</p>
+        </div>
+        <button onclick="closeSetupModal()" class="sun-btn w-10 h-10 bg-slate-200 text-slate-900 text-sm font-black">
+          ✕
+        </button>
+      </div>
+
+      <!-- Match Parameters (Field players & period minutes) -->
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="sun-card p-3 bg-slate-50">
+          <label class="text-[11px] font-black uppercase text-slate-700 block mb-1">Players on Field</label>
+          <input type="number" id="inputFieldCount" min="2" max="11" value="5" class="w-full bg-white border-2 border-slate-900 text-slate-950 rounded-lg p-2 font-mono-nums font-black text-base focus:outline-none">
+          <span class="text-[10px] font-bold text-slate-500">e.g. 4v4, 5v5, 7v7</span>
+        </div>
+
+        <div class="sun-card p-3 bg-slate-50">
+          <label class="text-[11px] font-black uppercase text-slate-700 block mb-1">Period Length (Min)</label>
+          <input type="number" id="inputPeriodLength" min="1" max="45" value="8" class="w-full bg-white border-2 border-slate-900 text-slate-950 rounded-lg p-2 font-mono-nums font-black text-base focus:outline-none">
+          <span class="text-[10px] font-bold text-slate-500">4 equal quarters</span>
+        </div>
+      </div>
+
+      <!-- Add Single Player Form -->
+      <div class="sun-card p-3.5 bg-slate-50 mb-4">
+        <label class="text-[11px] font-black uppercase text-slate-800 block mb-1.5">
+          Add Player (<span id="rosterCountIndicator">0</span> / 11 max)
+        </label>
+        <div class="flex gap-2 mb-2">
+          <input type="text" id="playerNameInput" placeholder="Child's name" class="flex-1 bg-white border-2 border-slate-900 text-slate-950 font-bold rounded-lg px-3 py-2 text-sm focus:outline-none" onkeydown="if(event.key==='Enter') addPlayerFromInput()">
+          <button onclick="addPlayerFromInput()" class="sun-btn px-4 bg-emerald-600 text-white text-xs">
+            + Add
+          </button>
+        </div>
+
+        <!-- Quick Paste Dropdown -->
+        <details class="text-xs font-bold text-slate-700 mt-2">
+          <summary class="cursor-pointer text-blue-700 underline">Or paste team roster at once</summary>
+          <div class="mt-2 space-y-1.5">
+            <textarea id="bulkPasteInput" rows="2" placeholder="e.g. Liam, Noah, Oliver, Emma, Ava, Sophia" class="w-full bg-white border-2 border-slate-900 text-slate-950 font-bold rounded-lg p-2 text-xs focus:outline-none"></textarea>
+            <button onclick="bulkAddPlayers()" class="sun-btn px-3 py-1.5 bg-slate-200 text-slate-900 text-xs min-h-[38px]">
+              Import Names
+            </button>
+          </div>
+        </details>
+      </div>
+
+      <!-- Lineup & Starters List -->
+      <div class="mb-5">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-black uppercase text-slate-900">Roster & Starters</span>
+          <span class="text-[11px] font-bold text-slate-600">Tap status to toggle starter</span>
+        </div>
+        <div id="rosterManagerList" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
+        <div id="rosterEmptyNotice" class="text-center py-6 text-xs font-bold text-slate-500 italic">
+          Roster is empty. Add up to 11 players above.
+        </div>
+      </div>
+
+      <!-- Save & Apply Lineup -->
+      <button onclick="saveAndApplySetup()" class="w-full sun-btn bg-emerald-600 text-white text-base py-3 shadow-[0_4px_0_#0f172a]">
+        Apply & Start Match
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'SOCCER_SUB_TRACKER_SUNLIGHT_V1';
+
+    // State container
+    let state = {
+      playersOnField: 5,
+      periodMinutes: 8,
+      totalPeriods: 4,
+      currentPeriod: 1,
+      secondsRemaining: 8 * 60,
+      isRunning: false,
+      lastTimestamp: null,
+      players: [], // Completely EMPTY roster by default
+      skippedInThisSubCycle: [],
+      manualOutId: null,
+      manualInId: null
+    };
+
+    function init() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          state = Object.assign(state, parsed);
+
+          // Correct for phone sleep / screen lock elapsed time using Date.now()
+          if (state.isRunning && state.lastTimestamp) {
+            const now = Date.now();
+            const elapsed = Math.floor((now - state.lastTimestamp) / 1000);
+            if (elapsed > 0) {
+              applyElapsedSeconds(elapsed);
+            }
+          }
+        } catch (err) {
+          console.error("Storage parsing error", err);
+        }
+      }
+
+      // If no players exist, immediately open setup modal so coach enters their roster
+      if (!state.players || state.players.length === 0) {
+        openSetupModal();
+      }
+
+      // Recover time if phone is unlocked or browser tab is refocused
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && state.isRunning && state.lastTimestamp) {
+          const now = Date.now();
+          const elapsed = Math.floor((now - state.lastTimestamp) / 1000);
+          if (elapsed > 0) {
+            applyElapsedSeconds(elapsed);
+            state.lastTimestamp = now;
+            saveState();
+            render();
+          }
+        }
+      });
+
+      // Regular 1-second interval loop
+      setInterval(gameClockHeartbeat, 1000);
+      render();
+    }
+
+    function saveState() {
+      state.lastTimestamp = state.isRunning ? Date.now() : null;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function gameClockHeartbeat() {
+      if (!state.isRunning) return;
+
+      const now = Date.now();
+      if (!state.lastTimestamp) {
+        state.lastTimestamp = now;
+        return;
+      }
+
+      const elapsed = Math.floor((now - state.lastTimestamp) / 1000);
+      if (elapsed >= 1) {
+        applyElapsedSeconds(elapsed);
+        state.lastTimestamp = now;
+        saveState();
+        render();
+      }
+    }
+
+    function applyElapsedSeconds(deltaSeconds) {
+      if (state.secondsRemaining - deltaSeconds <= 0) {
+        deltaSeconds = state.secondsRemaining;
+        state.secondsRemaining = 0;
+        state.isRunning = false;
+        document.getElementById('periodEndBanner').classList.remove('hidden');
+      } else {
+        state.secondsRemaining -= deltaSeconds;
+      }
+
+      const pIdx = state.currentPeriod - 1;
+
+      state.players.forEach(p => {
+        if (p.status === 'field') {
+          p.periodPlaySeconds[pIdx] = (p.periodPlaySeconds[pIdx] || 0) + deltaSeconds;
+          p.totalPlaySeconds = (p.totalPlaySeconds || 0) + deltaSeconds;
+          p.currentShiftSeconds = (p.currentShiftSeconds || 0) + deltaSeconds;
+        } else {
+          p.currentBenchSeconds = (p.currentBenchSeconds || 0) + deltaSeconds;
+        }
+      });
+    }
+
+    function toggleClock() {
+      if (state.players.length === 0) {
+        showDialog("No Roster Added", "Please add your players before starting the game clock.", [
+          { text: "Open Setup", class: "bg-emerald-600 text-white", action: openSetupModal }
+        ]);
+        return;
+      }
+
+      if (state.secondsRemaining <= 0) {
+        advancePeriodPrompt();
+        return;
+      }
+
+      state.isRunning = !state.isRunning;
+      state.lastTimestamp = state.isRunning ? Date.now() : null;
+      saveState();
+      render();
+    }
+
+    function getRecommendation() {
+      const pIdx = state.currentPeriod - 1;
+      const fieldPlayers = state.players.filter(p => p.status === 'field');
+      
+      // Bench players available for sub
+      const benchPlayers = state.players.filter(p => 
+        p.status === 'bench' && 
+        !p.isResting && 
+        !state.skippedInThisSubCycle.includes(p.id)
+      );
+
+      if (fieldPlayers.length === 0 || benchPlayers.length === 0) {
+        return { outPlayer: null, inPlayer: null };
+      }
+
+      // OUT Sorting (Pitch Player who sat least / played most):
+      // 1. Most time in current period
+      // 2. Longest active shift
+      // 3. Most total match time
+      const sortedOut = [...fieldPlayers].sort((a, b) => {
+        const pA = a.periodPlaySeconds[pIdx] || 0;
+        const pB = b.periodPlaySeconds[pIdx] || 0;
+        if (pB !== pA) return pB - pA;
+        if (b.currentShiftSeconds !== a.currentShiftSeconds) return b.currentShiftSeconds - a.currentShiftSeconds;
+        return (b.totalPlaySeconds || 0) - (a.totalPlaySeconds || 0);
+      });
+
+      // IN Sorting (Bench Player who needs playing time):
+      // 1. TOP PRIORITY: If player was skipped in a prior sub ("Next Up"), they are pinned at #1
+      // 2. Least time in this current period (strict quarter fairness)
+      // 3. Least total match time (guarantees game-wide parity)
+      // 4. Longest bench wait time
+      const sortedIn = [...benchPlayers].sort((a, b) => {
+        if (a.isNextPriorityQueue && !b.isNextPriorityQueue) return -1;
+        if (!a.isNextPriorityQueue && b.isNextPriorityQueue) return 1;
+
+        const pA = a.periodPlaySeconds[pIdx] || 0;
+        const pB = b.periodPlaySeconds[pIdx] || 0;
+        if (pA !== pB) return pA - pB;
+        if ((a.totalPlaySeconds || 0) !== (b.totalPlaySeconds || 0)) {
+          return (a.totalPlaySeconds || 0) - (b.totalPlaySeconds || 0);
+        }
+        return (b.currentBenchSeconds || 0) - (a.currentBenchSeconds || 0);
+      });
+
+      return {
+        outPlayer: sortedOut[0],
+        inPlayer: sortedIn[0]
+      };
+    }
+
+    function applyRecommendation() {
+      const { outPlayer, inPlayer } = getRecommendation();
+      if (!outPlayer || !inPlayer) return;
+
+      substitutePlayers(outPlayer.id, inPlayer.id);
+      state.skippedInThisSubCycle = [];
+      saveState();
+      render();
+    }
+
+    function substitutePlayers(outId, inId) {
+      const outP = state.players.find(p => p.id === outId);
+      const inP = state.players.find(p => p.id === inId);
+
+      if (outP && inP) {
+        outP.status = 'bench';
+        outP.currentShiftSeconds = 0;
+        outP.currentBenchSeconds = 0;
+
+        inP.status = 'field';
+        inP.currentShiftSeconds = 0;
+        inP.currentBenchSeconds = 0;
+        inP.isNextPriorityQueue = false; // Successfully in, clear priority flag
+      }
+
+      state.manualOutId = null;
+      state.manualInId = null;
+    }
+
+    // Skip player when hot/tired: pins them as #1 in queue for the next substitution
+    function skipRecommendedPlayer() {
+      const { inPlayer } = getRecommendation();
+      if (!inPlayer) return;
+
+      // Pin them for the next round
+      inPlayer.isNextPriorityQueue = true;
+
+      // Bypass them for this instantaneous recommendation so coach gets 2nd candidate immediately
+      state.skippedInThisSubCycle.push(inPlayer.id);
+
+      saveState();
+      render();
+    }
+
+    function toggleRestManual(playerId, e) {
+      if (e) e.stopPropagation();
+      const p = state.players.find(item => item.id === playerId);
+      if (p) {
+        p.isResting = !p.isResting;
+        if (p.isResting) {
+          p.isNextPriorityQueue = false;
+        }
+        saveState();
+        render();
+      }
+    }
+
+    function clearPriorityQueue(playerId, e) {
+      if (e) e.stopPropagation();
+      const p = state.players.find(item => item.id === playerId);
+      if (p) {
+        p.isNextPriorityQueue = false;
+        state.skippedInThisSubCycle = state.skippedInThisSubCycle.filter(id => id !== playerId);
+        saveState();
+        render();
+      }
+    }
+
+    function handlePlayerCardTap(id) {
+      const p = state.players.find(item => item.id === id);
+      if (!p) return;
+
+      if (p.status === 'field') {
+        state.manualOutId = (state.manualOutId === id) ? null : id;
+      } else {
+        state.manualInId = (state.manualInId === id) ? null : id;
+      }
+
+      renderManualBar();
+      render();
+    }
+
+    function renderManualBar() {
+      const bar = document.getElementById('manualSwapBar');
+      const summary = document.getElementById('manualSwapSummary');
+      const executeBtn = document.getElementById('manualSwapExecuteBtn');
+
+      if (state.manualOutId || state.manualInId) {
+        bar.classList.remove('hidden');
+        const outP = state.players.find(p => p.id === state.manualOutId);
+        const inP = state.players.find(p => p.id === state.manualInId);
+
+        const outName = outP ? outP.name : 'Tap Pitch Player';
+        const inName = inP ? inP.name : 'Tap Bench Player';
+
+        summary.innerHTML = `<span class="text-rose-400 font-black">${outName}</span> ⇄ <span class="text-emerald-400 font-black">${inName}</span>`;
+        executeBtn.disabled = !(state.manualOutId && state.manualInId);
+      } else {
+        bar.classList.add('hidden');
+      }
+    }
+
+    function clearManualSelection() {
+      state.manualOutId = null;
+      state.manualInId = null;
+      renderManualBar();
+      render();
+    }
+
+    function executeManualSwap() {
+      if (state.manualOutId && state.manualInId) {
+        substitutePlayers(state.manualOutId, state.manualInId);
+        state.skippedInThisSubCycle = [];
+        clearManualSelection();
+        saveState();
+        render();
+      }
+    }
+
+    function advancePeriodPrompt() {
+      if (state.currentPeriod >= state.totalPeriods) {
+        showDialog("Match Completed", "All 4 periods are complete! Review totals or reset for your next match.", [
+          { text: "Review", class: "bg-slate-200 text-slate-900", action: closeDialog },
+          { text: "New Match", class: "bg-emerald-600 text-white font-black", action: resetMatch }
+        ]);
+        return;
+      }
+
+      showDialog(
+        `Advance to Period ${state.currentPeriod + 1}?`,
+        `Clock will reset to ${state.periodMinutes}:00 for Period ${state.currentPeriod + 1}. All cumulative playtime is preserved.`,
+        [
+          { text: "Cancel", class: "bg-slate-200 text-slate-900", action: closeDialog },
+          { text: "Advance Period", class: "bg-blue-700 text-white font-black", action: () => {
+            state.currentPeriod += 1;
+            state.secondsRemaining = state.periodMinutes * 60;
+            state.isRunning = false;
+            state.lastTimestamp = null;
+            state.skippedInThisSubCycle = [];
+
+            // Reset current shift counters for new period
+            state.players.forEach(p => {
+              p.currentShiftSeconds = 0;
+            });
+
+            document.getElementById('periodEndBanner').classList.add('hidden');
+            closeDialog();
+            saveState();
+            render();
+          }}
+        ]
+      );
+    }
+
+    function resetMatchPrompt() {
+      showDialog(
+        "Reset Match?",
+        "This will reset the clock to Period 1 and zero out all play times. Your player roster will be kept.",
+        [
+          { text: "Cancel", class: "bg-slate-200 text-slate-900", action: closeDialog },
+          { text: "Reset Match", class: "bg-rose-700 text-white font-black", action: resetMatch }
+        ]
+      );
+    }
+
+    function resetMatch() {
+      state.currentPeriod = 1;
+      state.secondsRemaining = state.periodMinutes * 60;
+      state.isRunning = false;
+      state.lastTimestamp = null;
+      state.skippedInThisSubCycle = [];
+
+      state.players.forEach((p, idx) => {
+        p.status = (idx < state.playersOnField) ? 'field' : 'bench';
+        p.periodPlaySeconds = [0, 0, 0, 0];
+        p.totalPlaySeconds = 0;
+        p.currentShiftSeconds = 0;
+        p.currentBenchSeconds = 0;
+        p.isResting = false;
+        p.isNextPriorityQueue = false;
+      });
+
+      document.getElementById('periodEndBanner').classList.add('hidden');
+      closeDialog();
+      saveState();
+      render();
+    }
+
+    function formatTime(sec) {
+      sec = Math.max(0, Math.floor(sec || 0));
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+
+    function render() {
+      const pIdx = state.currentPeriod - 1;
+
+      // Scoreboard Clock & Period Indicators
+      document.getElementById('clockDisplay').textContent = formatTime(state.secondsRemaining);
+      document.getElementById('periodBadge').textContent = `Period ${state.currentPeriod} / ${state.totalPeriods}`;
+      document.getElementById('quarterLengthLabel').textContent = `${state.periodMinutes}m periods`;
+
+      const clockBtn = document.getElementById('clockBtn');
+      const clockBtnText = document.getElementById('clockBtnText');
+      const playPauseIcon = document.getElementById('playPauseIcon');
+
+      if (state.isRunning) {
+        clockBtn.className = "sun-btn px-4 py-2 text-sm bg-amber-400 hover:bg-amber-300 text-slate-950 min-h-[48px]";
+        clockBtnText.textContent = "PAUSE";
+        playPauseIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+      } else {
+        clockBtn.className = "sun-btn px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-500 text-white min-h-[48px]";
+        clockBtnText.textContent = "START";
+        playPauseIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+      }
+
+      // Empty Roster vs Active Game visibility
+      const emptyCard = document.getElementById('emptyRosterCard');
+      const recCard = document.getElementById('recommendationCard');
+
+      if (!state.players || state.players.length === 0) {
+        emptyCard.classList.remove('hidden');
+        recCard.classList.add('hidden');
+        document.getElementById('fieldList').innerHTML = '';
+        document.getElementById('benchList').innerHTML = '';
+        document.getElementById('fieldCountDisplay').textContent = '0';
+        document.getElementById('targetFieldDisplay').textContent = state.playersOnField;
+        document.getElementById('benchCountDisplay').textContent = '0';
+        return;
+      } else {
+        emptyCard.classList.add('hidden');
+        recCard.classList.remove('hidden');
+      }
+
+      // Recommendation Card Rendering
+      const { outPlayer, inPlayer } = getRecommendation();
+      if (outPlayer && inPlayer) {
+        recCard.classList.remove('hidden');
+        document.getElementById('recOutName').textContent = outPlayer.name;
+        document.getElementById('recOutShift').textContent = formatTime(outPlayer.currentShiftSeconds);
+        document.getElementById('recOutPeriod').textContent = formatTime(outPlayer.periodPlaySeconds[pIdx] || 0);
+
+        document.getElementById('recInName').textContent = inPlayer.name;
+        document.getElementById('recInSat').textContent = formatTime(inPlayer.currentBenchSeconds);
+        document.getElementById('recInPeriod').textContent = formatTime(inPlayer.periodPlaySeconds[pIdx] || 0);
+      } else {
+        recCard.classList.add('hidden');
+      }
+
+      // Priority Pinned Queue Notice
+      const queuedPlayer = state.players.find(p => p.status === 'bench' && p.isNextPriorityQueue);
+      const queueNotice = document.getElementById('queueNotice');
+      if (queuedPlayer) {
+        queueNotice.classList.remove('hidden');
+        document.getElementById('queueNoticeName').textContent = queuedPlayer.name;
+      } else {
+        queueNotice.classList.add('hidden');
+      }
+
+      const fieldList = state.players.filter(p => p.status === 'field');
+      const benchList = state.players.filter(p => p.status === 'bench');
+
+      document.getElementById('fieldCountDisplay').textContent = fieldList.length;
+      document.getElementById('targetFieldDisplay').textContent = state.playersOnField;
+      document.getElementById('benchCountDisplay').textContent = benchList.length;
+
+      // Render On-Field Cards (High Contrast Daylight Borders)
+      document.getElementById('fieldList').innerHTML = fieldList.map(p => {
+        const isSelected = state.manualOutId === p.id;
+        const periodTime = formatTime(p.periodPlaySeconds[pIdx] || 0);
+        const totalTime = formatTime(p.totalPlaySeconds || 0);
+        const shiftTime = formatTime(p.currentShiftSeconds || 0);
+
+        const cardStyle = isSelected 
+          ? 'bg-rose-50 border-4 border-rose-700 shadow-[0_3px_0_#991b1b]'
+          : 'bg-white border-2 border-slate-900 border-l-[8px] border-l-emerald-600 shadow-[0_2px_0_#0f172a]';
+
+        return `
+          <div onclick="handlePlayerCardTap('${p.id}')" class="p-3 rounded-xl flex items-center justify-between cursor-pointer active:scale-[0.99] transition ${cardStyle}">
+            <div>
+              <div class="flex items-center gap-1.5 mb-1">
+                <span class="font-black text-base text-black">${p.name}</span>
+                <span class="text-[11px] font-mono-nums font-black bg-emerald-100 text-emerald-950 border border-emerald-400 px-1.5 py-0.5 rounded">
+                  Shift: ${shiftTime}
+                </span>
+              </div>
+              <div class="text-xs font-bold text-slate-800 space-x-2">
+                <span>Period: <strong class="font-mono-nums text-black">${periodTime}</strong></span>
+                <span>Total: <strong class="font-mono-nums text-black">${totalTime}</strong></span>
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="text-xs font-black uppercase px-2 py-1 rounded ${isSelected ? 'bg-rose-700 text-white' : 'bg-emerald-700 text-white'}">
+                ${isSelected ? 'Selected (OUT)' : 'Pitch'}
+              </span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Render Bench Cards
+      const sortedBench = [...benchList].sort((a, b) => {
+        if (a.isNextPriorityQueue && !b.isNextPriorityQueue) return -1;
+        if (!a.isNextPriorityQueue && b.isNextPriorityQueue) return 1;
+        if (a.isResting && !b.isResting) return 1;
+        if (!a.isResting && b.isResting) return -1;
+        return (b.currentBenchSeconds || 0) - (a.currentBenchSeconds || 0);
+      });
+
+      document.getElementById('benchList').innerHTML = sortedBench.map(p => {
+        const isSelected = state.manualInId === p.id;
+        const periodTime = formatTime(p.periodPlaySeconds[pIdx] || 0);
+        const totalTime = formatTime(p.totalPlaySeconds || 0);
+        const satTime = formatTime(p.currentBenchSeconds || 0);
+
+        let cardStyle = 'bg-white border-2 border-slate-900 border-l-[8px] border-l-slate-400 shadow-[0_2px_0_#0f172a]';
+        if (isSelected) {
+          cardStyle = 'bg-emerald-50 border-4 border-emerald-700 shadow-[0_3px_0_#15803d]';
+        } else if (p.isNextPriorityQueue) {
+          cardStyle = 'bg-amber-50 border-2 border-amber-800 border-l-[8px] border-l-amber-500 queued-priority-active';
+        } else if (p.isResting) {
+          cardStyle = 'bg-slate-100 border-2 border-slate-400 border-l-[8px] border-l-slate-400 opacity-70';
+        }
+
+        return `
+          <div onclick="handlePlayerCardTap('${p.id}')" class="p-3 rounded-xl flex items-center justify-between cursor-pointer active:scale-[0.99] transition ${cardStyle}">
+            <div>
+              <div class="flex items-center gap-1.5 mb-1">
+                <span class="font-black text-base text-black">${p.name}</span>
+                ${p.isNextPriorityQueue ? '<span class="text-[10px] font-black uppercase bg-amber-400 text-slate-950 border border-slate-900 px-1.5 py-0.5 rounded">⚡ #1 Next Up</span>' : ''}
+                ${p.isResting ? '<span class="text-[10px] font-black bg-slate-300 text-slate-800 px-1.5 py-0.5 rounded">Resting</span>' : ''}
+              </div>
+              <div class="text-xs font-bold text-slate-800 space-x-2">
+                <span>Period: <strong class="font-mono-nums text-black">${periodTime}</strong></span>
+                <span>Total: <strong class="font-mono-nums text-black">${totalTime}</strong></span>
+                <span>Sat: <strong class="font-mono-nums text-black">${satTime}</strong></span>
+              </div>
+            </div>
+
+            <!-- Card Actions -->
+            <div class="flex items-center gap-1.5" onclick="event.stopPropagation()">
+              ${p.isNextPriorityQueue ? `
+                <button onclick="clearPriorityQueue('${p.id}', event)" class="sun-btn px-2.5 py-1 text-[11px] bg-amber-200 text-amber-950 min-h-[38px]">
+                  Clear #1
+                </button>
+              ` : ''}
+
+              <button onclick="toggleRestManual('${p.id}', event)" class="sun-btn px-2.5 py-1 text-[11px] min-h-[38px] ${p.isResting ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-900'}">
+                ${p.isResting ? 'Ready' : 'Rest'}
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function openSetupModal() {
+      document.getElementById('setupModal').classList.remove('hidden');
+      document.getElementById('inputFieldCount').value = state.playersOnField;
+      document.getElementById('inputPeriodLength').value = state.periodMinutes;
+      renderRosterManagerList();
+    }
+
+    function closeSetupModal() {
+      document.getElementById('setupModal').classList.add('hidden');
+    }
+
+    function renderRosterManagerList() {
+      const container = document.getElementById('rosterManagerList');
+      const emptyNotice = document.getElementById('rosterEmptyNotice');
+      const indicator = document.getElementById('rosterCountIndicator');
+
+      indicator.textContent = state.players.length;
+
+      if (state.players.length === 0) {
+        container.innerHTML = '';
+        emptyNotice.classList.remove('hidden');
+        return;
+      }
+
+      emptyNotice.classList.add('hidden');
+      container.innerHTML = state.players.map((p, index) => `
+        <div class="flex items-center justify-between p-2.5 rounded-lg bg-white border-2 border-slate-900 shadow-[0_2px_0_#0f172a]">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-mono-nums font-black text-slate-500 w-5">${index + 1}.</span>
+            <span class="text-sm font-black text-slate-950">${p.name}</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button onclick="togglePlayerStartingStatus(${index})" class="sun-btn px-3 py-1 text-xs min-h-[36px] ${p.status === 'field' ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-800'}">
+              ${p.status === 'field' ? 'Starter (Pitch)' : 'Bench'}
+            </button>
+            <button onclick="deletePlayer(${index})" class="sun-btn px-2.5 py-1 text-xs bg-rose-100 hover:bg-rose-200 text-rose-900 min-h-[36px]" title="Remove child">
+              ✕
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function addPlayerFromInput() {
+      const input = document.getElementById('playerNameInput');
+      const name = input.value.trim();
+      if (!name) return;
+
+      if (state.players.length >= 11) {
+        showDialog("Roster Full", "Maximum of 11 players allowed per match.", [
+          { text: "OK", class: "bg-slate-900 text-white", action: closeDialog }
+        ]);
+        return;
+      }
+
+      const currentStarters = state.players.filter(p => p.status === 'field').length;
+      const initialStatus = currentStarters < state.playersOnField ? 'field' : 'bench';
+
+      state.players.push(createPlayer(name, initialStatus));
+      input.value = '';
+      renderRosterManagerList();
+    }
+
+    function bulkAddPlayers() {
+      const textarea = document.getElementById('bulkPasteInput');
+      const text = textarea.value.trim();
+      if (!text) return;
+
+      const names = text.split(/[\n,]+/).map(n => n.trim()).filter(n => n.length > 0);
+
+      for (const name of names) {
+        if (state.players.length >= 11) break;
+        const currentStarters = state.players.filter(p => p.status === 'field').length;
+        const initialStatus = currentStarters < state.playersOnField ? 'field' : 'bench';
+        state.players.push(createPlayer(name, initialStatus));
+      }
+
+      textarea.value = '';
+      renderRosterManagerList();
+    }
+
+    function createPlayer(name, status) {
+      return {
+        id: 'p_' + Math.random().toString(36).substr(2, 9),
+        name: name,
+        status: status || 'bench',
+        periodPlaySeconds: [0, 0, 0, 0],
+        totalPlaySeconds: 0,
+        currentShiftSeconds: 0,
+        currentBenchSeconds: 0,
+        isResting: false,
+        isNextPriorityQueue: false
+      };
+    }
+
+    function togglePlayerStartingStatus(index) {
+      const p = state.players[index];
+      if (p) {
+        p.status = (p.status === 'field') ? 'bench' : 'field';
+        renderRosterManagerList();
+      }
+    }
+
+    function deletePlayer(index) {
+      state.players.splice(index, 1);
+      renderRosterManagerList();
+    }
+
+    function saveAndApplySetup() {
+      const fieldCount = parseInt(document.getElementById('inputFieldCount').value, 10);
+      const periodLength = parseInt(document.getElementById('inputPeriodLength').value, 10);
+
+      if (isNaN(fieldCount) || fieldCount < 1) {
+        showDialog("Invalid Setup", "Field player count must be at least 1.", [
+          { text: "OK", class: "bg-slate-900 text-white", action: closeDialog }
+        ]);
+        return;
+      }
+
+      state.playersOnField = fieldCount;
+      state.periodMinutes = periodLength || 8;
+      state.secondsRemaining = state.periodMinutes * 60;
+
+      // Adjust starters automatically if fewer are selected than slots
+      const fieldStarters = state.players.filter(p => p.status === 'field');
+      if (fieldStarters.length !== state.playersOnField && state.players.length >= state.playersOnField) {
+        state.players.forEach((p, idx) => {
+          p.status = idx < state.playersOnField ? 'field' : 'bench';
+        });
+      }
+
+      closeSetupModal();
+      saveState();
+      render();
+    }
+
+    function showDialog(title, message, buttons) {
+      document.getElementById('dialogTitle').textContent = title;
+      document.getElementById('dialogMessage').textContent = message;
+
+      const container = document.getElementById('dialogButtons');
+      container.innerHTML = '';
+
+      buttons.forEach(btnInfo => {
+        const btn = document.createElement('button');
+        btn.className = `sun-btn px-4 py-2 text-xs min-h-[44px] ${btnInfo.class || 'bg-slate-200 text-slate-900'}`;
+        btn.textContent = btnInfo.text;
+        btn.onclick = btnInfo.action;
+        container.appendChild(btn);
+      });
+
+      document.getElementById('customDialog').classList.remove('hidden');
+    }
+
+    function closeDialog() {
+      document.getElementById('customDialog').classList.add('hidden');
+    }
+
+    // Direct one-tap standalone HTML file download to phone storage
+    function downloadSelfHtml() {
+      const htmlDoc = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+      const blob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'SoccerSubManager_Sunlight.html';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

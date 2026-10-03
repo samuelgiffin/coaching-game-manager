@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#ffffff">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
+  <title>Soccer Sub Manager v3</title>
+  <style>
+    :root {
+      --pitch-green: #15803d;
+      --pitch-green-bg: #dcfce7;
+      --crimson-out: #b91c1c;
+      --crimson-bg: #fee2e2;
+      --cobalt-rec: #1d4ed8;
+      --cobalt-bg: #dbeafe;
+      --amber-queue: #b45309;
+      --amber-bg: #fef3c7;
+      --card-border: #0f172a;
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      margin: 0;
+      padding-bottom: 8rem;
+    }
+    .font-mono-nums {
+      font-variant-numeric: tabular-nums;
+    }
+    @keyframes outdoorGaze {
+      0%, 100% { box-shadow: 0 0 0 3px #d97706; border-color: #b45309; }
+      50% { box-shadow: 0 0 0 5px #f59e0b; border-color: #78350f; }
+    }
+    .sun-btn {
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      border-radius: 12px;
+      border: 2px solid #0f172a;
+      box-shadow: 0 3px 0 #0f172a;
+      transition: transform 0.08s ease, box-shadow 0.08s ease;
+      cursor: pointer;
+      padding: 0 1rem;
+      font-size: 14px;
+      background: white;
+      color: #0f172a;
+    }
+    .sun-btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 #0f172a;
+    }
+    .sun-card {
+      background-color: #ffffff;
+      border: 2px solid #0f172a;
+      box-shadow: 0 2px 0 #0f172a;
+      border-radius: 12px;
+      padding: 0.875rem;
+      margin-bottom: 1rem;
+    }
+    .hidden { display: none !important; }
+    .max-w-md { max-width: 28rem; margin: 0 auto; }
+    .px-3-5 { padding-left: 0.875rem; padding-right: 0.875rem; }
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .gap-2 { gap: 0.5rem; }
+    .w-full { width: 100%; }
+    .mt-1 { margin-top: 0.25rem; }
+    .mt-2 { margin-top: 0.5rem; }
+    .mt-4 { margin-top: 1rem; }
+    .mb-1 { margin-bottom: 0.25rem; }
+    .mb-2 { margin-bottom: 0.5rem; }
+    .mb-4 { margin-bottom: 1rem; }
+    .text-center { text-align: center; }
+    .bg-blue-700 { background-color: #1d4ed8; color: white; }
+    .bg-emerald-600 { background-color: #059669; color: white; }
+    .bg-amber-400 { background-color: #fbbf24; color: black; }
+    .bg-slate-900 { background-color: #0f172a; color: white; }
+    .text-xs { font-size: 0.75rem; }
+    .text-sm { font-size: 0.875rem; }
+    .text-xl { font-size: 1.25rem; }
+    .text-4xl { font-size: 2.25rem; }
+    .font-black { font-weight: 900; }
+    .font-bold { font-weight: 700; }
+    .uppercase { text-transform: uppercase; }
+    .rounded-md { border-radius: 0.375rem; }
+    .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+    .py-0-5 { padding-top: 0.125rem; padding-bottom: 0.125rem; }
+    .border { border-width: 1px; border-style: solid; }
+    
+    .flex-wrap { flex-wrap: wrap; }
+    .grid { display: grid; }
+    .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .gap-x-4 { column-gap: 1rem; }
+    .gap-y-1 { row-gap: 0.25rem; }
+    .border-b { border-bottom-width: 1px; border-bottom-style: solid; border-color: #e2e8f0; }
+    .border-b-2 { border-bottom-width: 2px; border-bottom-style: solid; border-color: #e2e8f0; }
+    .pb-2 { padding-bottom: 0.5rem; }
+    .ml-1 { margin-left: 0.25rem; }
+    .pr-2 { padding-right: 0.5rem; }
+    .mt-6 { margin-top: 1.5rem; }
+    .text-2xl { font-size: 1.5rem; }
+    .rounded-2xl { border-radius: 1rem; }
+    .shadow-xl { box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+    .cursor-pointer { cursor: pointer; }
+    .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bg-slate-100 { background-color: #f1f5f9; }
+    .text-slate-400 { color: #94a3b8; }
+    .text-slate-500 { color: #64748b; }
+    .bg-emerald-100 { background-color: #d1fae5; }
+    .text-emerald-900 { color: #064e3b; }
+    .text-emerald-700 { color: #047857; }
+    .border-emerald-300 { border-color: #6ee7b7; }
+    .bg-rose-100 { background-color: #ffe4e6; }
+    .text-rose-900 { color: #881337; }
+    .text-rose-700 { color: #be123c; }
+    .border-rose-300 { border-color: #fda4af; }
+    
+    /* New Layout Utilities for Match Report */
+    .bg-white { background-color: #ffffff; }
+    .border-slate-200 { border-color: #e2e8f0; }
+    .border-slate-300 { border-color: #cbd5e1; }
+    .rounded-xl { border-radius: 0.75rem; }
+    .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+    .shadow-md { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+    .text-sm { font-size: 0.875rem; }
+    .text-base { font-size: 1rem; }
+    .text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+    .p-4 { padding: 1rem; }
+    .px-4 { padding-left: 1rem; padding-right: 1rem; }
+    .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+    .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+    .mt-1 { margin-top: 0.25rem; }
+    .mt-2 { margin-top: 0.5rem; }
+    .mb-3 { margin-bottom: 0.75rem; }
+    .mb-6 { margin-bottom: 1.5rem; }
+    .gap-2 { gap: 0.5rem; }
+    .gap-x-6 { column-gap: 1.5rem; }
+    .gap-y-2 { row-gap: 0.5rem; }
+    .pb-4 { padding-bottom: 1rem; }
+
+    .card-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .player-card {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.75rem; border-radius: 0.75rem;
+      border: 2px solid #0f172a;
+      background: white;
+      box-shadow: 0 2px 0 #0f172a;
+      cursor: pointer;
+    }
+    .player-card.selected { background: #fee2e2; border-color: #b91c1c; box-shadow: 0 2px 0 #b91c1c; }
+    .player-card.resting { opacity: 0.6; background: #f1f5f9; }
+    .fairness-badge { font-size: 10px; padding: 2px 4px; border-radius: 4px; font-weight: bold; }
+    .fairness-good { background: #dcfce7; color: #166534; }
+    .fairness-bad { background: #fef3c7; color: #92400e; }
+    .fairness-neutral { background: #f1f5f9; color: #475569; }
+    
+    header { border-bottom: 4px solid #0f172a; background: white; padding: 0.5rem; margin-bottom: 1rem; }
+    
+    #modalOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 50; display: flex; align-items: center; justify-content: center; }
+    .modal-content { background: white; border: 4px solid #0f172a; border-radius: 1rem; padding: 1rem; width: 100%; max-width: 20rem; }
+    
+    #setupModal { position: fixed; inset: 0; background: white; z-index: 60; overflow-y: auto; padding: 1rem; }
+    .setup-input { width: 100%; border: 2px solid #0f172a; padding: 0.5rem; border-radius: 0.5rem; font-weight: bold; box-sizing: border-box; margin-top: 0.25rem;}
+    
+    #manualSwapBar { position: fixed; bottom: 1rem; left: 1rem; right: 1rem; background: #0f172a; color: white; padding: 0.75rem; border-radius: 0.75rem; display: flex; justify-content: space-between; align-items: center; z-index: 45; }
+    #undoBar { background: #3b82f6; color: white; padding: 0.5rem; text-align: center; font-weight: bold; font-size: 0.875rem; cursor: pointer; }
+    #crashBanner, #storageBanner { background: #ef4444; color: white; padding: 0.5rem; text-align: center; font-weight: bold; font-size: 0.875rem; }
+    #periodBanner { background: #fbbf24; color: black; padding: 0.75rem; font-weight: 900; border: 2px solid #0f172a; border-radius: 0.5rem; margin-top: 1rem; display: flex; justify-content: space-between; align-items: center;}
+  </style>
+</head>
+<body>
+  <div id="crashBanner" class="hidden">App crashed. <button data-action="reload" class="sun-btn">Reload</button> <button data-action="resetApp" class="sun-btn">Reset Data</button></div>
+  <div id="storageBanner" class="hidden">⚠ Not saving: storage unavailable.</div>
+  <div id="undoBar" class="hidden" data-action="undo">↶ Undo: <span id="undoLabel"></span></div>
+  
+  <header>
+    <div class="max-w-md">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <button data-action="openMatchLog" class="sun-btn bg-slate-900 text-white w-full" style="font-size: 1.125rem; min-height: 40px;">
+          Us <span id="scoreUs" style="margin: 0 0.5rem">0</span> - <span id="scoreThem" style="margin: 0 0.5rem">0</span> Them
+        </button>
+        <button data-action="scoreThem" class="sun-btn text-white" style="background-color: #b91c1c; min-height: 40px; white-space:nowrap;">+ Them</button>
+      </div>
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <div class="text-xs uppercase font-black" id="periodBadge">Period 1 / 4</div>
+          <div class="font-mono-nums text-4xl font-black" id="clockDisplay">00:00</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button data-action="toggleClock" id="clockBtn" class="sun-btn bg-emerald-600">START</button>
+          <button data-action="openSetup" class="sun-btn" aria-label="Setup">⚙️</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-md px-3-5 mt-4">
+    <div id="periodBanner" class="hidden">
+      <span>⏱ Period completed!</span>
+      <button data-action="advancePeriod" class="sun-btn bg-slate-900">Next</button>
+    </div>
+
+    <div id="recommendCard" class="sun-card bg-cobalt-bg hidden">
+      <div class="text-xs font-black uppercase mb-4 text-blue-900">Recommended Sub</div>
+      <div class="flex gap-2 mb-4">
+        <div class="w-full">
+          <div class="text-xs font-bold uppercase text-red-700">OUT</div>
+          <div class="font-black text-xl" id="recOutName">--</div>
+          <div class="text-xs font-mono-nums">Shift: <span id="recOutShift" data-t="recOutShift">00:00</span></div>
+        </div>
+        <div class="w-full">
+          <div class="text-xs font-bold uppercase text-green-700">IN</div>
+          <div class="font-black text-xl" id="recInName">--</div>
+          <div class="text-xs font-mono-nums">Sat: <span id="recInSat" data-t="recInSat">00:00</span></div>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button data-action="makeSub" class="sun-btn bg-blue-700 w-full">Make Sub</button>
+        <button data-action="skipSub" class="sun-btn bg-amber-400">⏭ Skip</button>
+      </div>
+      <div id="queueNotice" class="text-xs font-bold mt-2 hidden">
+        ⚡ <span id="queueNoticeName"></span> is next up
+        <button data-action="clearSkips" class="sun-btn" style="min-height:24px; padding:0 0.5rem">Clear</button>
+      </div>
+    </div>
+    
+    <div id="allSkippedNotice" class="sun-card bg-amber-bg hidden">
+      <div class="font-bold text-sm mb-2">Everyone on the bench was skipped.</div>
+      <button data-action="clearSkips" class="sun-btn w-full bg-amber-400">Clear skips</button>
+    </div>
+    
+    <div id="noneEligibleNotice" class="sun-card hidden text-center font-bold text-sm">
+      All bench players are resting.
+    </div>
+
+    <div class="mt-4 mb-4">
+      <div class="text-xs font-black uppercase mb-2">On Field (<span id="fieldCount">0</span>)</div>
+      <div id="fieldList" class="card-list"></div>
+    </div>
+
+    <div class="mt-4 mb-4">
+      <div class="text-xs font-black uppercase mb-2">Bench (<span id="benchCount">0</span>)</div>
+      <div id="benchList" class="card-list"></div>
+    </div>
+
+    <div class="flex gap-2 mt-4 pt-4 border-t-2">
+      <button data-action="advancePeriodConfirm" class="sun-btn w-full">Next Period →</button>
+      <button data-action="resetMatchConfirm" class="sun-btn">Reset</button>
+    </div>
+  </main>
+
+  <div id="manualSwapBar" class="hidden">
+    <div class="text-xs font-bold">
+      Manual Sub<br>
+      <span id="manualOutLabel" style="color:#fca5a5">Out</span> ⇄ <span id="manualInLabel" style="color:#86efac">In</span>
+    </div>
+    <div class="flex gap-2">
+      <button data-action="executeSwap" id="btnExecuteSwap" class="sun-btn bg-blue-700">Swap</button>
+      <button data-action="cancelSwap" class="sun-btn">✕</button>
+    </div>
+  </div>
+
+  <div id="modalOverlay" class="hidden">
+    <div class="modal-content">
+      <h3 id="modalTitle" class="font-black text-xl mb-2">Confirm</h3>
+      <p id="modalMessage" class="text-sm font-bold mb-4">Are you sure?</p>
+      <div class="flex justify-between gap-2" id="modalButtons"></div>
+    </div>
+  </div>
+
+  <div id="setupModal" class="hidden">
+    <div class="max-w-md">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="font-black text-xl">Setup</h2>
+        <button data-action="closeSetup" class="sun-btn" aria-label="Close">✕</button>
+      </div>
+      
+      <div id="setupErrors" class="hidden text-sm font-bold mb-4" style="color:#b91c1c;"></div>
+
+      <div class="flex gap-2 mb-4">
+        <div class="w-full">
+          <label class="text-xs font-black uppercase">Field Size</label>
+          <input type="number" id="draftFieldSize" class="setup-input" min="2" max="11" value="5">
+        </div>
+        <div class="w-full">
+          <label class="text-xs font-black uppercase">Minutes</label>
+          <input type="number" id="draftMinutes" class="setup-input" min="1" max="45" value="8">
+        </div>
+      </div>
+      
+      <div class="mb-4">
+        <label class="text-xs font-black uppercase block">Add Player</label>
+        <div class="flex gap-2">
+          <input type="text" id="draftPlayerName" class="setup-input" placeholder="Name">
+          <button data-action="draftAddPlayer" class="sun-btn bg-emerald-600 mt-1">Add</button>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <div class="text-xs font-black uppercase flex justify-between">
+          <span>Roster (<span id="draftRosterCount">0</span>/18)</span>
+          <span>Starters: <span id="draftStarterCount">0</span>/<span id="draftTargetStarters">0</span></span>
+        </div>
+        <div id="draftRosterList" class="card-list mt-2"></div>
+      </div>
+
+      <div class="mt-4 flex gap-2">
+         <button data-action="saveSetup" class="sun-btn bg-emerald-600 w-full">Save</button>
+         <button data-action="downloadHtml" class="sun-btn" aria-label="Download App HTML">💾</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="matchLogModal" class="hidden" style="position: fixed; inset: 0; background: #f1f5f9; z-index: 60; overflow-y: auto; padding: 1rem;">
+    <div class="max-w-md" style="margin: 0 auto;">
+      <div class="flex justify-between items-start mb-6 border-b-2 border-slate-300 pb-4 mt-2">
+        <div>
+          <h2 class="font-black text-3xl text-slate-900">Match Report</h2>
+          <div id="logDateTime" class="text-sm font-bold text-slate-500 mt-1">Oct 3, 2026 10:00 AM</div>
+        </div>
+        <div class="font-black text-3xl px-4 py-2 bg-slate-900 text-white rounded-lg shadow-md" id="logScore">
+          0 - 0
+        </div>
+      </div>
+      
+      <div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <h3 class="text-sm font-black uppercase text-slate-400 mb-3">Scoring Timeline</h3>
+        <div id="logTimeline" class="flex flex-wrap gap-2 text-sm font-bold"></div>
+      </div>
+      
+      <div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <h3 class="text-sm font-black uppercase text-slate-400 mb-3">Top Scorers</h3>
+        <div id="logTopScorers" class="flex flex-wrap gap-2 text-base font-black"></div>
+      </div>
+
+      <div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <h3 class="text-sm font-black uppercase text-slate-400 mb-3">Playtime Summary</h3>
+        <div id="logPlaytime" class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm font-bold text-slate-800"></div>
+      </div>
+      
+      <button data-action="closeMatchLog" class="sun-btn w-full mt-2 bg-slate-900 text-white text-base py-3 rounded-xl shadow-md border-0">Close Report</button>
+    </div>
+  </div>
+
+  <script id="engine">
+    const Engine = {
+      createState: function() {
+        return {
+          v: 3,
+          settings: { fieldSize: 5, periodMinutes: 8, periodCount: 4 },
+          roster: [],
+          starterIds: [],
+          match: {
+            period: 1,
+            clock: { running: false, startedAt: null, elapsedMs: 0 },
+            players: {},
+            pinnedId: null,
+            skipIds: [],
+            undo: null,
+            score: { us: 0, them: 0 },
+            events: []
+          }
+        };
+      },
+      generateId: function() {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+          try { return crypto.randomUUID(); } catch(e) {}
+        }
+        return Math.random().toString(36).substring(2, 15);
+      },
+      normalize: function(raw) {
+        const s = this.createState();
+        if (!raw || typeof raw !== 'object') return s;
+        if (raw.v === 3) {
+          let parsed;
+          try { parsed = JSON.parse(JSON.stringify(raw)); } catch(e) { return s; }
+          if (!parsed.match.score) parsed.match.score = { us: 0, them: 0 };
+          if (!parsed.match.events) parsed.match.events = [];
+          return parsed;
+        }
+        if (typeof raw.playersOnField === 'number') s.settings.fieldSize = raw.playersOnField;
+        if (typeof raw.periodMinutes === 'number') s.settings.periodMinutes = raw.periodMinutes;
+        if (raw.match && raw.match.score) s.match.score = JSON.parse(JSON.stringify(raw.match.score));
+        if (raw.match && raw.match.events) s.match.events = JSON.parse(JSON.stringify(raw.match.events));
+        if (Array.isArray(raw.players)) {
+          s.roster = raw.players.map(p => ({
+            id: p.id || this.generateId(),
+            name: p.name || 'Unknown'
+          }));
+          s.starterIds = s.roster.slice(0, s.settings.fieldSize).map(r=>r.id);
+        }
+        return this.resetMatch(s, 0);
+      },
+      clockMs: function(state, now) {
+        const periodMs = state.settings.periodMinutes * 60 * 1000;
+        let runningMs = 0;
+        if (state.match.clock.running && state.match.clock.startedAt !== null) {
+          runningMs = Math.max(0, now - state.match.clock.startedAt);
+        }
+        return Math.min(periodMs, state.match.clock.elapsedMs + runningMs);
+      },
+      times: function(state, id, now) {
+        const p = state.match.players[id];
+        if (!p) return { periodMs: 0, totalMs: 0, shiftMs: 0, satMs: 0, fairDeltaMs: 0 };
+        const cMs = this.clockMs(state, now);
+        
+        let shiftMs = p.onField ? cMs - p.stintStartMs : 0;
+        let satMs = p.onField ? 0 : cMs - p.stintStartMs;
+        let periodMs = (p.periodMs[state.match.period - 1] || 0) + shiftMs;
+        let totalMs = p.periodMs.reduce((a,b) => a+b, 0) + shiftMs;
+        
+        return { periodMs, totalMs, shiftMs, satMs, fairDeltaMs: 0 };
+      },
+      start: function(state, now) {
+        const newState = JSON.parse(JSON.stringify(state));
+        const pMs = newState.settings.periodMinutes * 60 * 1000;
+        const currentMs = this.clockMs(newState, now);
+        if (currentMs >= pMs) return newState; // periodOver
+        if (!newState.match.clock.running) {
+          newState.match.clock.running = true;
+          newState.match.clock.startedAt = now;
+        }
+        return newState;
+      },
+      pause: function(state, now) {
+        const newState = JSON.parse(JSON.stringify(state));
+        if (newState.match.clock.running) {
+          newState.match.clock.elapsedMs = this.clockMs(newState, now);
+          newState.match.clock.running = false;
+          newState.match.clock.startedAt = null;
+        }
+        return newState;
+      },
+      recommend: function(state, now) {
+        const MIN_SHIFT_MS = 60000;
+        let inCandidates = [];
+        let outCandidates = [];
+        
+        let sumTotal = 0;
+        let count = 0;
+        for (let r of state.roster) {
+          if (!state.match.players[r.id]) continue;
+          let t = this.times(state, r.id, now);
+          sumTotal += t.totalMs;
+          count++;
+        }
+        const avgTotal = count > 0 ? sumTotal / count : 0;
+        
+        for (let r of state.roster) {
+          let t = this.times(state, r.id, now);
+          t.fairDeltaMs = t.totalMs - avgTotal;
+          let p = state.match.players[r.id];
+          if (!p) continue;
+          
+          if (!p.onField) {
+            if (!p.resting && !state.match.skipIds.includes(r.id)) {
+              inCandidates.push({ id: r.id, t, p, index: state.roster.indexOf(r) });
+            }
+          } else {
+            outCandidates.push({ id: r.id, t, p, index: state.roster.indexOf(r) });
+          }
+        }
+        
+        const nonRestingBenchCount = state.roster.filter(r => {
+          let p = state.match.players[r.id];
+          return p && !p.onField && !p.resting;
+        }).length;
+
+        if (nonRestingBenchCount === 0) {
+           const anyBench = state.roster.some(r => {
+              let p = state.match.players[r.id];
+              return p && !p.onField;
+           });
+           if (!anyBench) return { outId: null, inId: null, status: 'no-bench' };
+           return { outId: null, inId: null, status: 'none-eligible' };
+        }
+        
+        if (inCandidates.length === 0 && nonRestingBenchCount > 0) {
+          return { outId: null, inId: null, status: 'all-skipped' };
+        }
+        
+        inCandidates.sort((a, b) => {
+          if (a.id === state.match.pinnedId && b.id !== state.match.pinnedId) return -1;
+          if (b.id === state.match.pinnedId && a.id !== state.match.pinnedId) return 1;
+          if (a.t.totalMs !== b.t.totalMs) return a.t.totalMs - b.t.totalMs;
+          if (a.t.periodMs !== b.t.periodMs) return a.t.periodMs - b.t.periodMs;
+          if (a.t.satMs !== b.t.satMs) return b.t.satMs - a.t.satMs;
+          return a.index - b.index;
+        });
+        
+        outCandidates.sort((a, b) => {
+          const aShort = a.t.shiftMs < MIN_SHIFT_MS;
+          const bShort = b.t.shiftMs < MIN_SHIFT_MS;
+          if (aShort && !bShort) return 1;
+          if (!aShort && bShort) return -1;
+          if (a.t.totalMs !== b.t.totalMs) return b.t.totalMs - a.t.totalMs;
+          if (a.t.shiftMs !== b.t.shiftMs) return b.t.shiftMs - a.t.shiftMs;
+          return a.index - b.index;
+        });
+        
+        if (inCandidates.length > 0 && outCandidates.length > 0) {
+          return { outId: outCandidates[0].id, inId: inCandidates[0].id, status: 'ok' };
+        }
+        return { outId: null, inId: null, status: 'none-eligible' };
+      },
+      substitute: function(state, outId, inId, now) {
+        let newState = JSON.parse(JSON.stringify(state));
+        newState = this.pause(newState, now);
+        
+        const outP = newState.match.players[outId];
+        const inP = newState.match.players[inId];
+        if (!outP || !inP || !outP.onField || inP.onField) return state; // Invalid
+        
+        const cMs = this.clockMs(newState, now);
+        newState.match.undo = {
+          label: `${state.roster.find(r=>r.id===outId)?.name || 'Out'} ⇄ ${state.roster.find(r=>r.id===inId)?.name || 'In'}`,
+          keepClock: true,
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+        
+        outP.periodMs[newState.match.period - 1] = (outP.periodMs[newState.match.period - 1] || 0) + (cMs - outP.stintStartMs);
+        outP.onField = false;
+        outP.stintStartMs = cMs;
+        
+        inP.onField = true;
+        inP.stintStartMs = cMs;
+        inP.resting = false;
+        
+        if (newState.match.pinnedId === inId) newState.match.pinnedId = null;
+        newState.match.skipIds = [];
+        
+        if (state.match.clock.running) {
+          newState.match.clock.running = true;
+          newState.match.clock.startedAt = now;
+        }
+        return newState;
+      },
+      skip: function(state, now) {
+        const rec = this.recommend(state, now);
+        if (!rec.inId) return state;
+        const newState = JSON.parse(JSON.stringify(state));
+        newState.match.skipIds.push(rec.inId);
+        if (!newState.match.pinnedId) newState.match.pinnedId = rec.inId;
+        return newState;
+      },
+      clearSkips: function(state) {
+        const newState = JSON.parse(JSON.stringify(state));
+        newState.match.skipIds = [];
+        return newState;
+      },
+      clearPin: function(state) {
+        const newState = JSON.parse(JSON.stringify(state));
+        newState.match.pinnedId = null;
+        return newState;
+      },
+      toggleRest: function(state, id) {
+        const newState = JSON.parse(JSON.stringify(state));
+        const p = newState.match.players[id];
+        if (p && !p.onField) {
+          p.resting = !p.resting;
+          if (p.resting && newState.match.pinnedId === id) newState.match.pinnedId = null;
+        }
+        return newState;
+      },
+      advancePeriod: function(state, now) {
+        if (state.match.period >= state.settings.periodCount) return state;
+        let newState = this.pause(state, now);
+        const cMs = this.clockMs(newState, now);
+        newState.match.undo = {
+          label: `Period ${newState.match.period} → ${newState.match.period + 1}`,
+          keepClock: false,
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+        for (let id in newState.match.players) {
+          let p = newState.match.players[id];
+          if (p.onField) {
+            p.periodMs[newState.match.period - 1] = (p.periodMs[newState.match.period - 1] || 0) + (cMs - p.stintStartMs);
+          }
+          p.stintStartMs = 0;
+        }
+        newState.match.period++;
+        newState.match.clock.elapsedMs = 0;
+        newState.match.skipIds = [];
+        return newState;
+      },
+      resetMatch: function(state, now) {
+        let newState = this.pause(state, now);
+        newState.match.undo = {
+          label: `Reset Match`,
+          keepClock: false,
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+        newState.match.period = 1;
+        newState.match.clock.elapsedMs = 0;
+        newState.match.skipIds = [];
+        newState.match.pinnedId = null;
+        for (let r of newState.roster) {
+          const onField = newState.starterIds.includes(r.id);
+          newState.match.players[r.id] = {
+            onField,
+            stintStartMs: 0,
+            periodMs: Array(newState.settings.periodCount).fill(0),
+            resting: false
+          };
+        }
+        return newState;
+      },
+      recordGoal: function(state, team, playerId, now) {
+        let newState = JSON.parse(JSON.stringify(state));
+        newState.match.score[team]++;
+        newState.match.events.push({
+          id: this.generateId(),
+          type: team === 'us' ? 'goal_us' : 'goal_them',
+          playerId: playerId,
+          period: state.match.period,
+          clockMs: this.clockMs(state, now)
+        });
+        return newState;
+      },
+      deleteEvent: function(state, eventId) {
+        let newState = JSON.parse(JSON.stringify(state));
+        const evtIdx = newState.match.events.findIndex(e => e.id === eventId);
+        if (evtIdx >= 0) {
+          const evt = newState.match.events[evtIdx];
+          if (evt.type === 'goal_us') newState.match.score.us--;
+          if (evt.type === 'goal_them') newState.match.score.them--;
+          newState.match.events.splice(evtIdx, 1);
+        }
+        return newState;
+      },
+      undo: function(state, now) {
+        if (!state.match.undo) return state;
+        let newState = JSON.parse(JSON.stringify(state));
+        const oldMatch = newState.match.undo.match;
+        const keepClock = newState.match.undo.keepClock;
+        newState.match = oldMatch;
+        if (keepClock) newState.match.clock = JSON.parse(JSON.stringify(state.match.clock));
+        return newState;
+      },
+      applySetup: function(state, draft, now) {
+        let errors = [];
+        if (draft.fieldSize < 2 || draft.fieldSize > 11) errors.push("Field size must be 2-11");
+        if (draft.periodMinutes < 1 || draft.periodMinutes > 45) errors.push("Period minutes must be 1-45");
+        if (draft.periodCount !== 2 && draft.periodCount !== 4) errors.push("Period count must be 2 or 4");
+        if (draft.roster.length < 1 || draft.roster.length > 18) errors.push("Roster must have 1-18 players");
+        let names = new Set();
+        draft.roster.forEach((r, i) => {
+          let tName = r.name.trim();
+          if (tName.length < 1 || tName.length > 20) errors.push(`Name "${r.name}" must be 1-20 chars`);
+          if (names.has(tName.toLowerCase())) errors.push(`Duplicate name: ${tName}`);
+          names.add(tName.toLowerCase());
+          draft.roster[i].name = tName;
+        });
+        const reqStarters = Math.min(draft.fieldSize, draft.roster.length);
+        if (draft.starterIds.length !== reqStarters) errors.push(`Must select exactly ${reqStarters} starters`);
+        
+        if (errors.length > 0) return { ok: false, state, errors };
+        let newState = JSON.parse(JSON.stringify(state));
+        const matchStarted = newState.match.period > 1 || newState.match.clock.elapsedMs > 0 || newState.match.clock.running;
+        
+        if (!matchStarted) {
+          newState.settings.fieldSize = draft.fieldSize;
+          newState.settings.periodMinutes = draft.periodMinutes;
+          newState.settings.periodCount = draft.periodCount;
+          newState.roster = draft.roster;
+          newState.starterIds = draft.starterIds;
+          newState = this.resetMatch(newState, now);
+          newState.match.undo = null;
+        } else {
+          for (let r of draft.roster) {
+            if (!newState.roster.find(ex => ex.id === r.id)) {
+              newState.roster.push(r);
+              newState.match.players[r.id] = {
+                onField: false,
+                stintStartMs: this.clockMs(newState, now),
+                periodMs: Array(newState.settings.periodCount).fill(0),
+                resting: false
+              };
+            }
+          }
+        }
+        return { ok: true, state: newState, errors: [] };
+      }
+    };
+    globalThis.Engine = Engine;
+  </script>
+  <script id="app">
+    let state = Engine.createState();
+    let draft = null;
+    let manualOutId = null;
+    let manualInId = null;
+    let wakeLock = null;
+
+    // Save initial HTML immediately before any render
+    const APP_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+
+    window.addEventListener('error', () => {
+      document.getElementById('crashBanner').classList.remove('hidden');
+    });
+
+    function load() {
+      let raw = localStorage.getItem('SSM_V3');
+      if (raw) {
+        try {
+          let parsed = JSON.parse(raw);
+          state = Engine.normalize(parsed);
+        } catch(err) {
+          localStorage.setItem('SSM_V3_corrupt', raw);
+          state = Engine.createState();
+          document.getElementById('storageBanner').textContent = "⚠ Corrupt data recovered. Old data saved to SSM_V3_corrupt.";
+          document.getElementById('storageBanner').classList.remove('hidden');
+        }
+      } else {
+        // v2 migration attempt
+        let v2raw = localStorage.getItem('SOCCER_SUB_TRACKER_SUNLIGHT_V1');
+        if (v2raw) {
+          try {
+            state = Engine.normalize(JSON.parse(v2raw));
+          } catch(e) {}
+        }
+      }
+      
+      if (state.roster.length === 0) {
+        openSetup();
+      }
+    }
+
+    function save() {
+      try {
+        localStorage.setItem('SSM_V3', JSON.stringify(state));
+        document.getElementById('storageBanner').classList.add('hidden');
+      } catch (e) {
+        document.getElementById('storageBanner').classList.remove('hidden');
+      }
+    }
+
+    async function manageWakeLock() {
+      if (!('wakeLock' in navigator)) return;
+      if (state.match.clock.running && !document.hidden) {
+        try {
+          if (!wakeLock) wakeLock = await navigator.wakeLock.request('screen');
+        } catch(e) {}
+      } else {
+        if (wakeLock) {
+          wakeLock.release().then(() => wakeLock = null);
+        }
+      }
+    }
+    
+    document.addEventListener('visibilitychange', manageWakeLock);
+
+    function dispatch(actionName, ...args) {
+      state = Engine[actionName](state, ...args, Date.now());
+      save();
+      manageWakeLock();
+      renderAll();
+    }
+
+    // Modal system
+    function showModal(title, msg, buttonsHtml) {
+      document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalMessage').textContent = msg;
+      document.getElementById('modalButtons').innerHTML = buttonsHtml;
+      document.getElementById('modalOverlay').classList.remove('hidden');
+    }
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.add('hidden');
+    }
+
+    // Actions
+    function toggleClock() {
+      if (state.roster.length === 0) return openSetup();
+      dispatch(state.match.clock.running ? 'pause' : 'start');
+    }
+    
+    function advancePeriodConfirm() {
+      if (state.match.period >= state.settings.periodCount) {
+        showModal("Match Over", "All periods complete. Keep reviewing or reset?", `
+          <button class="sun-btn" data-action="closeModal">Keep Reviewing</button>
+          <button class="sun-btn bg-emerald-600" data-action="resetMatchConfirm">New Match</button>
+        `);
+        return;
+      }
+      const cMs = Engine.clockMs(state, Date.now());
+      const pMs = state.settings.periodMinutes * 60 * 1000;
+      if (cMs < pMs) {
+        const left = pMs - cMs;
+        const m = Math.floor(left / 60000);
+        const s = Math.floor((left % 60000) / 1000);
+        showModal("Advance early?", `${m}:${s.toString().padStart(2,'0')} left in this period. Advance anyway?`, `
+          <button class="sun-btn" data-action="closeModal">Cancel</button>
+          <button class="sun-btn bg-slate-900" data-action="advancePeriod">Advance Period</button>
+        `);
+      } else {
+        dispatch('advancePeriod');
+      }
+    }
+
+    function resetMatchConfirm() {
+      showModal("Reset Match?", "This resets the clock and play times to zero. Rosters are kept.", `
+          <button class="sun-btn" data-action="closeModal">Cancel</button>
+          <button class="sun-btn bg-red-700 text-white" data-action="resetMatch">Reset Match</button>
+      `);
+    }
+
+    // Setup Draft
+    function openSetup() {
+      draft = JSON.parse(JSON.stringify(state));
+      // pre-fill draft if new match, draft doesn't have starterIds
+      draft.starterIds = draft.starterIds || [];
+      renderSetup();
+      document.getElementById('setupModal').classList.remove('hidden');
+    }
+    
+    function closeSetup() {
+      if (state.roster.length === 0) return; // Prevent closing if no roster
+      document.getElementById('setupModal').classList.add('hidden');
+    }
+
+    function renderSetup() {
+      document.getElementById('setupErrors').classList.add('hidden');
+      const matchStarted = state.match.period > 1 || state.match.clock.elapsedMs > 0 || state.match.clock.running;
+      
+      document.getElementById('draftFieldSize').value = draft.settings.fieldSize;
+      document.getElementById('draftMinutes').value = draft.settings.periodMinutes;
+      
+      document.getElementById('draftFieldSize').disabled = matchStarted;
+      document.getElementById('draftMinutes').disabled = matchStarted;
+      
+      const reqStarters = Math.min(draft.settings.fieldSize, draft.roster.length);
+      document.getElementById('draftRosterCount').textContent = draft.roster.length;
+      document.getElementById('draftStarterCount').textContent = draft.starterIds.length;
+      document.getElementById('draftTargetStarters').textContent = reqStarters;
+      
+      const list = document.getElementById('draftRosterList');
+      list.innerHTML = draft.roster.map(r => {
+        const isStarter = draft.starterIds.includes(r.id);
+        const btnClass = isStarter ? "bg-emerald-600" : "bg-slate-200 text-slate-900";
+        return `
+          <div class="player-card">
+             <span class="font-black text-lg">${r.name}</span>
+             <button data-action="draftToggleStarter" data-id="${r.id}" class="sun-btn ${btnClass}" style="min-height:36px; font-size:12px;">
+               ${isStarter ? 'Starter' : 'Bench'}
+             </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function saveSetup() {
+      draft.settings.fieldSize = parseInt(document.getElementById('draftFieldSize').value);
+      draft.settings.periodMinutes = parseInt(document.getElementById('draftMinutes').value);
+      draft.settings.periodCount = state.settings.periodCount || 4; // keeping existing
+
+      const res = Engine.applySetup(state, draft.settings, Date.now()); // wait, draft format
+      const draftObj = {
+         fieldSize: draft.settings.fieldSize,
+         periodMinutes: draft.settings.periodMinutes,
+         periodCount: draft.settings.periodCount,
+         roster: draft.roster,
+         starterIds: draft.starterIds
+      };
+      const result = Engine.applySetup(state, draftObj, Date.now());
+      if (result.ok) {
+        state = result.state;
+        save();
+        renderAll();
+        closeSetup();
+      } else {
+        const errDiv = document.getElementById('setupErrors');
+        errDiv.innerHTML = result.errors.join('<br>');
+        errDiv.classList.remove('hidden');
+      }
+    }
+
+    function renderMatchLog() {
+      const dateOpts = { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+      document.getElementById('logDateTime').textContent = new Date().toLocaleDateString('en-US', dateOpts);
+      document.getElementById('logScore').textContent = `${state.match.score.us} - ${state.match.score.them}`;
+
+      const timelineEl = document.getElementById('logTimeline');
+      if (!state.match.events || state.match.events.length === 0) {
+        timelineEl.innerHTML = '<span class="text-slate-400">No goals recorded</span>';
+      } else {
+        const sortedEvents = [...state.match.events].sort((a,b) => {
+           if (a.period !== b.period) return a.period - b.period;
+           return a.clockMs - b.clockMs;
+        });
+        
+        timelineEl.innerHTML = sortedEvents.map(evt => {
+          if (evt.type === 'goal_us') {
+            const name = state.roster.find(r => r.id === evt.playerId)?.name || 'Unknown';
+            return `<span class="bg-emerald-100 text-emerald-900 px-2 py-1 rounded border border-emerald-300 flex items-center gap-1">
+              P${evt.period} ${fmt(evt.clockMs)} - ${name} ⚽
+              <span data-action="deleteEventBtn" data-id="${evt.id}" class="ml-1 text-emerald-700 cursor-pointer font-black px-1" title="Delete">&times;</span>
+            </span>`;
+          } else {
+            return `<span class="bg-rose-100 text-rose-900 px-2 py-1 rounded border border-rose-300 flex items-center gap-1">
+              P${evt.period} ${fmt(evt.clockMs)} - Them ⚽
+              <span data-action="deleteEventBtn" data-id="${evt.id}" class="ml-1 text-rose-700 cursor-pointer font-black px-1" title="Delete">&times;</span>
+            </span>`;
+          }
+        }).join('');
+      }
+
+      const scorersEl = document.getElementById('logTopScorers');
+      let scorerCounts = {};
+      (state.match.events || []).forEach(evt => {
+         if (evt.type === 'goal_us' && evt.playerId) {
+            scorerCounts[evt.playerId] = (scorerCounts[evt.playerId] || 0) + 1;
+         }
+      });
+      const topIds = Object.keys(scorerCounts).sort((a,b) => scorerCounts[b] - scorerCounts[a]);
+      if (topIds.length === 0) {
+         scorersEl.innerHTML = '<span class="text-slate-400">None yet</span>';
+      } else {
+         scorersEl.innerHTML = topIds.map(id => {
+            const name = state.roster.find(r => r.id === id)?.name || 'Unknown';
+            return `<span class="bg-slate-100 border border-slate-300 px-2 py-1 rounded">${name} ${'⚽'.repeat(scorerCounts[id])}</span>`;
+         }).join('');
+      }
+
+      const playtimeEl = document.getElementById('logPlaytime');
+      const now = Date.now();
+      const playtimes = state.roster.map(r => {
+         const t = Engine.times(state, r.id, now);
+         return { name: r.name, totalMs: t.totalMs };
+      }).sort((a,b) => b.totalMs - a.totalMs);
+      
+      playtimeEl.innerHTML = playtimes.map(p => `
+        <div class="flex justify-between border-b py-1">
+           <span class="truncate pr-2">${p.name}</span>
+           <span class="font-mono-nums">${fmt(p.totalMs)}</span>
+        </div>
+      `).join('');
+    }
+
+    // Render loop logic
+    function fmt(ms) {
+      const totalS = Math.floor(Math.max(0, ms) / 1000);
+      const m = Math.floor(totalS / 60);
+      const s = totalS % 60;
+      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+    
+    function fmtBadge(deltaMs) {
+       const s = Math.floor(deltaMs / 1000);
+       const sign = s > 0 ? "+" : (s < 0 ? "−" : ""); // use real minus sign
+       const abs = Math.abs(s);
+       const m = Math.floor(abs/60);
+       const sec = abs%60;
+       return `${sign}${m}:${sec.toString().padStart(2,'0')}`;
+    }
+
+    function badgeClass(deltaMs) {
+       if (deltaMs > 30000) return "fairness-good";
+       if (deltaMs < -30000) return "fairness-bad";
+       return "fairness-neutral";
+    }
+
+    function renderAll() {
+      const now = Date.now();
+      
+      if (state.match.undo) {
+        document.getElementById('undoLabel').textContent = state.match.undo.label;
+        document.getElementById('undoBar').classList.remove('hidden');
+      } else {
+        document.getElementById('undoBar').classList.add('hidden');
+      }
+
+      document.getElementById('periodBadge').textContent = `Period ${state.match.period} / ${state.settings.periodCount}`;
+      
+      const cMs = Engine.clockMs(state, now);
+      const pMs = state.settings.periodMinutes * 60 * 1000;
+      const periodOver = cMs >= pMs;
+      
+      if (periodOver && state.match.period < state.settings.periodCount) {
+         if (state.match.clock.running) {
+             // We hit period end on the tick. Pause, vibrate.
+             dispatch('pause');
+             if ('vibrate' in navigator) navigator.vibrate(300);
+         }
+         document.getElementById('periodBanner').classList.remove('hidden');
+      } else {
+         document.getElementById('periodBanner').classList.add('hidden');
+      }
+
+      const btn = document.getElementById('clockBtn');
+      if (state.match.clock.running) {
+        btn.textContent = "PAUSE";
+        btn.className = "sun-btn bg-amber-400";
+      } else {
+        btn.textContent = "START";
+        btn.className = "sun-btn bg-emerald-600";
+      }
+
+      // Recommendations
+      const rec = Engine.recommend(state, now);
+      document.getElementById('recommendCard').classList.add('hidden');
+      document.getElementById('allSkippedNotice').classList.add('hidden');
+      document.getElementById('noneEligibleNotice').classList.add('hidden');
+      
+      if (rec.status === 'ok') {
+         document.getElementById('recommendCard').classList.remove('hidden');
+         document.getElementById('recOutName').textContent = state.roster.find(r=>r.id===rec.outId)?.name || '--';
+         document.getElementById('recInName').textContent = state.roster.find(r=>r.id===rec.inId)?.name || '--';
+         document.getElementById('recOutShift').setAttribute('data-id', rec.outId);
+         document.getElementById('recInSat').setAttribute('data-id', rec.inId);
+         document.getElementById('recommendCard').dataset.outId = rec.outId;
+         document.getElementById('recommendCard').dataset.inId = rec.inId;
+      } else if (rec.status === 'all-skipped') {
+         document.getElementById('allSkippedNotice').classList.remove('hidden');
+      } else if (rec.status === 'none-eligible') {
+         document.getElementById('noneEligibleNotice').classList.remove('hidden');
+      }
+      
+      if (state.match.pinnedId) {
+         document.getElementById('queueNotice').classList.remove('hidden');
+         document.getElementById('queueNoticeName').textContent = state.roster.find(r=>r.id===state.match.pinnedId)?.name || '--';
+      } else {
+         document.getElementById('queueNotice').classList.add('hidden');
+      }
+
+      // Lists
+      let fieldHtml = '';
+      let benchHtml = '';
+      let fCount = 0, bCount = 0;
+      
+      for (let r of state.roster) {
+         let p = state.match.players[r.id];
+         if (!p) continue;
+         let t = Engine.times(state, r.id, now);
+         
+         const isField = p.onField;
+         if (isField) fCount++; else bCount++;
+         
+         let classes = "player-card";
+         if (isField && manualOutId === r.id) classes += " selected";
+         if (!isField && manualInId === r.id) classes += " selected";
+         if (!isField && p.resting) classes += " resting";
+         
+         const timeLabel = isField ? "Shift:" : "Sat:";
+         const timeSpan = `<span class="font-mono-nums font-black text-sm" data-t="liveMs" data-id="${r.id}">00:00</span>`;
+         const periodSpan = `<span class="font-mono-nums font-bold" data-t="periodMs" data-id="${r.id}">00:00</span>`;
+         const totalSpan = `<span class="font-mono-nums font-bold" data-t="totalMs" data-id="${r.id}">00:00</span>`;
+         const fBadge = `<span class="fairness-badge ${badgeClass(t.fairDeltaMs)}" data-t="fairMs" data-id="${r.id}">${fmtBadge(t.fairDeltaMs)}</span>`;
+
+         let actionButtons = '';
+         if (isField) {
+            actionButtons = `<button data-action="scoreUsBtn" data-id="${r.id}" class="sun-btn bg-emerald-600" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.25rem;">⚽ Goal</button>`;
+         }
+
+         let html = `
+           <div class="${classes}" data-action="${isField ? 'tapField' : 'tapBench'}" data-id="${r.id}">
+             <div style="flex:1">
+               <div class="flex items-center gap-2 mb-1">
+                 <span class="font-black text-lg">${r.name}</span>
+                 ${!isField && p.resting ? '<span class="text-xs bg-slate-200 px-1 rounded font-bold">REST</span>' : ''}
+               </div>
+               <div class="text-xs font-bold text-slate-700">Period: ${periodSpan} | Total: ${totalSpan}</div>
+               ${actionButtons}
+             </div>
+             <div class="text-right">
+               <div class="text-xs uppercase font-bold">${timeLabel}</div>
+               ${timeSpan}
+               <div class="mt-1">${fBadge}</div>
+             </div>
+           </div>
+         `;
+         if (isField) fieldHtml += html;
+         else benchHtml += html;
+      }
+      
+      document.getElementById('fieldCount').textContent = `${fCount}/${state.settings.fieldSize}`;
+      document.getElementById('fieldList').innerHTML = fieldHtml;
+      
+      document.getElementById('benchCount').textContent = bCount;
+      document.getElementById('benchList').innerHTML = benchHtml;
+
+      // Manual swap bar
+      if (manualOutId || manualInId) {
+        document.getElementById('manualSwapBar').classList.remove('hidden');
+        document.getElementById('manualOutLabel').textContent = state.roster.find(r=>r.id===manualOutId)?.name || 'Out';
+        document.getElementById('manualInLabel').textContent = state.roster.find(r=>r.id===manualInId)?.name || 'In';
+        document.getElementById('btnExecuteSwap').disabled = !(manualOutId && manualInId);
+        document.getElementById('btnExecuteSwap').style.opacity = (manualOutId && manualInId) ? '1' : '0.5';
+      } else {
+        document.getElementById('manualSwapBar').classList.add('hidden');
+      }
+
+      document.getElementById('scoreUs').textContent = state.match.score.us || 0;
+      document.getElementById('scoreThem').textContent = state.match.score.them || 0;
+
+      renderTimes();
+    }
+
+    function renderTimes() {
+      const now = Date.now();
+      const cMs = Engine.clockMs(state, now);
+      
+      // We also check for period ending during ticking
+      const pMs = state.settings.periodMinutes * 60 * 1000;
+      if (cMs >= pMs && state.match.clock.running && state.match.period < state.settings.periodCount) {
+         dispatch('pause');
+         if ('vibrate' in navigator) navigator.vibrate(300);
+         document.getElementById('periodBanner').classList.remove('hidden');
+      }
+      
+      document.getElementById('clockDisplay').textContent = fmt(cMs);
+      
+      document.querySelectorAll('[data-t]').forEach(el => {
+         const type = el.getAttribute('data-t');
+         const id = el.getAttribute('data-id');
+         const t = Engine.times(state, id, now);
+         if (type === 'recOutShift') el.textContent = fmt(t.shiftMs);
+         else if (type === 'recInSat') el.textContent = fmt(t.satMs);
+         else if (type === 'liveMs') el.textContent = fmt(state.match.players[id].onField ? t.shiftMs : t.satMs);
+         else if (type === 'periodMs') el.textContent = fmt(t.periodMs);
+         else if (type === 'totalMs') el.textContent = fmt(t.totalMs);
+         else if (type === 'fairMs') {
+             el.textContent = fmtBadge(t.fairDeltaMs);
+             el.className = `fairness-badge ${badgeClass(t.fairDeltaMs)}`;
+         }
+      });
+    }
+
+    function tick() {
+      if (!state.match.clock.running) return;
+      renderTimes();
+    }
+
+    // Event Delegation
+    document.body.addEventListener('click', (e) => {
+      let btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const action = btn.getAttribute('data-action');
+      const id = btn.getAttribute('data-id');
+      
+      if (action === 'toggleClock') toggleClock();
+      else if (action === 'openSetup') openSetup();
+      else if (action === 'closeSetup') closeSetup();
+      else if (action === 'saveSetup') saveSetup();
+      else if (action === 'advancePeriodConfirm') advancePeriodConfirm();
+      else if (action === 'advancePeriod') { closeModal(); dispatch('advancePeriod'); }
+      else if (action === 'resetMatchConfirm') resetMatchConfirm();
+      else if (action === 'resetMatch') { closeModal(); dispatch('resetMatch'); }
+      else if (action === 'closeModal') closeModal();
+      else if (action === 'makeSub') {
+         const rCard = document.getElementById('recommendCard');
+         dispatch('substitute', rCard.dataset.outId, rCard.dataset.inId);
+      }
+      else if (action === 'skipSub') dispatch('skip');
+      else if (action === 'clearSkips') dispatch('clearSkips');
+      else if (action === 'undo') dispatch('undo');
+      else if (action === 'scoreThem') {
+         dispatch('recordGoal', 'them', null);
+      }
+      else if (action === 'scoreUsBtn') {
+         dispatch('recordGoal', 'us', id);
+         e.stopPropagation();
+      }
+      else if (action === 'openMatchLog') {
+         renderMatchLog();
+         document.getElementById('matchLogModal').classList.remove('hidden');
+      }
+      else if (action === 'closeMatchLog') {
+         document.getElementById('matchLogModal').classList.add('hidden');
+      }
+      else if (action === 'deleteEventBtn') {
+         state = Engine.deleteEvent(state, id);
+         save();
+         renderMatchLog();
+         renderAll();
+      }
+      else if (action === 'tapField') {
+         if (manualOutId === id) manualOutId = null;
+         else manualOutId = id;
+         renderAll();
+      }
+      else if (action === 'tapBench') {
+         // Long press / click could be split, but for simplicity, 
+         // let's use a double-tap or separate button for rest? 
+         // Spec: "Bench players only. Resting a player also unpins them."
+         // In v2 we had a toggle Rest. We can add a Rest button or allow toggle on double click.
+         // Let's add a long press or click toggles selection, maybe long press toggles rest?
+         // Actually, let's keep it simple: if selected twice? No, let's add a "Toggle Rest" in a small action bar or on the bench tap logic.
+         // Let's add an explicit Rest button on the bench card. Wait, the spec says: "Tap to queue / manual sub".
+         // Let's make the card tap select for sub, and a long press for Rest, or we just add a "Rest" button in the bench card HTML.
+         // Let's just handle it via tapping. If it's selected, tapping again unselects.
+         // Where is toggleRest in UI? I'll add a 'rest' button inside the bench card.
+         // If click target is inside a 'rest' button, handle it.
+         // So for now, tap selects.
+         if (manualInId === id) manualInId = null;
+         else manualInId = id;
+         renderAll();
+      }
+      else if (action === 'toggleRestBtn') {
+         dispatch('toggleRest', id);
+         e.stopPropagation();
+      }
+      else if (action === 'cancelSwap') {
+         manualOutId = null; manualInId = null;
+         renderAll();
+      }
+      else if (action === 'executeSwap') {
+         if (manualOutId && manualInId) {
+            dispatch('substitute', manualOutId, manualInId);
+            manualOutId = null; manualInId = null;
+         }
+      }
+      else if (action === 'draftAddPlayer') {
+         const input = document.getElementById('draftPlayerName');
+         const name = input.value.trim();
+         if (name) {
+            draft.roster.push({ id: Engine.generateId(), name });
+            input.value = '';
+            renderSetup();
+         }
+      }
+      else if (action === 'draftToggleStarter') {
+         const idx = draft.starterIds.indexOf(id);
+         if (idx >= 0) draft.starterIds.splice(idx, 1);
+         else if (draft.starterIds.length < draft.settings.fieldSize) draft.starterIds.push(id);
+         renderSetup();
+      }
+      else if (action === 'downloadHtml') {
+         const blob = new Blob([APP_HTML], {type: "text/html"});
+         const a = document.createElement("a");
+         a.href = URL.createObjectURL(blob);
+         a.download = "soccer_sub_manager_v3.html";
+         a.click();
+      }
+      else if (action === 'reload') window.location.reload();
+      else if (action === 'resetApp') {
+         if(confirm('Are you sure you want to delete ALL data?')) {
+            localStorage.clear();
+            window.location.reload();
+         }
+      }
+    });
+
+    // We missed injecting the "Rest" button into the bench card. Let's fix that.
+    // In `renderAll`, where we generate `benchHtml`, we can prepend a Rest button.
+    const origRenderAll = renderAll;
+    renderAll = function() {
+       origRenderAll();
+       // Inject Rest buttons
+       const benchCards = document.getElementById('benchList').querySelectorAll('.player-card');
+       benchCards.forEach(card => {
+          const id = card.getAttribute('data-id');
+          const p = state.match.players[id];
+          const restBtn = document.createElement('button');
+          restBtn.className = "sun-btn bg-slate-200 mt-2";
+          restBtn.style.padding = "0.25rem 0.5rem";
+          restBtn.style.minHeight = "28px";
+          restBtn.style.fontSize = "10px";
+          restBtn.dataset.action = "toggleRestBtn";
+          restBtn.dataset.id = id;
+          restBtn.textContent = p.resting ? "UNREST" : "REST";
+          card.querySelector('div').appendChild(restBtn);
+       });
+    };
+
+    load();
+  </script>
+</body>
+</html>
