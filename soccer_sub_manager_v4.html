@@ -219,6 +219,58 @@
       font-size: 11px;
       font-weight: bold;
     }
+
+    /* Visual Fairness Gauge */
+    .recap-fairness-card {
+      background: #ffffff;
+      border: 2px solid #0f172a;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .gauge-row {
+      margin-bottom: 12px;
+    }
+    .gauge-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      color: #0f172a;
+    }
+    .gauge-bar-track {
+      position: relative;
+      background: #e2e8f0;
+      height: 18px;
+      border-radius: 9px;
+      overflow: hidden;
+      border: 1px solid #cbd5e1;
+    }
+    .gauge-bar-fill {
+      height: 100%;
+      border-radius: 9px;
+      transition: width 0.3s ease;
+    }
+    .gauge-bar-fill.equal { background: #16a34a; }
+    .gauge-bar-fill.over  { background: #2563eb; }
+    .gauge-bar-fill.under { background: #d97706; }
+
+    .target-line-indicator {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: #ffffff;
+      border-right: 2px dashed #0f172a;
+      z-index: 2;
+    }
+    .recap-badges-list {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
   </style>
 </head>
 <body>
@@ -1082,17 +1134,36 @@
 
       const playtimeEl = document.getElementById('logPlaytime');
       const now = Date.now();
-      const playtimes = state.roster.map(r => {
-         const t = Engine.times(state, r.id, now);
-         return { name: r.name, totalMs: t.totalMs };
-      }).sort((a,b) => b.totalMs - a.totalMs);
-      
-      playtimeEl.innerHTML = playtimes.map(p => `
-        <div class="flex justify-between border-b py-1">
-           <span class="truncate pr-2">${p.name}</span>
-           <span class="font-mono-nums">${fmt(p.totalMs)}</span>
+      const metrics = Engine.recapMetrics(state, now);
+      const maxMs = metrics.maxPlayerMs || 1;
+      const targetPct = Math.min(100, Math.max(0, Math.round((metrics.targetMs / maxMs) * 100)));
+
+      playtimeEl.className = "flex flex-col gap-3";
+      playtimeEl.innerHTML = `
+        <div style="font-size:12px; font-weight:bold; color:#64748b; margin-bottom:4px;">
+          Equal Target Share: ${fmt(metrics.targetMs)} • Total Badges: ${metrics.totalBadges} 🎉
         </div>
-      `).join('');
+      ` + metrics.players.map(p => {
+        const widthPct = Math.min(100, Math.max(0, Math.round((p.totalMs / maxMs) * 100)));
+        const badgePills = Object.entries(p.badgeCounts)
+          .filter(([_, count]) => count > 0)
+          .map(([type, count]) => `<span class="badge-pill">${Engine.BADGE_MAP[type].icon} ${Engine.BADGE_MAP[type].title}${count > 1 ? ' x' + count : ''}</span>`)
+          .join('');
+
+        return `
+          <div class="gauge-row">
+            <div class="gauge-header">
+              <span>${p.name}</span>
+              <span class="font-mono-nums">${fmt(p.totalMs)}</span>
+            </div>
+            <div class="gauge-bar-track">
+              <div class="gauge-bar-fill ${p.fairnessStatus}" style="width: ${widthPct}%;"></div>
+              <div class="target-line-indicator" style="left: ${targetPct}%;" title="Equal Share Target"></div>
+            </div>
+            <div class="recap-badges-list mt-1">${badgePills || '<span style="font-size:11px; opacity:0.6; font-style:italic;">No badges yet</span>'}</div>
+          </div>
+        `;
+      }).join('');
     }
 
     // Render loop logic
