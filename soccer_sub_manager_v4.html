@@ -443,6 +443,9 @@
         <div id="logPlaytime" class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm font-bold text-slate-800"></div>
       </div>
       
+      <button data-action="copyParentRecap" class="sun-btn w-full mb-3 bg-emerald-600 text-white text-base py-3 rounded-xl shadow-md border-0 font-black">
+        📋 Copy Parent Summary Text
+      </button>
       <button data-action="closeMatchLog" class="sun-btn w-full mt-2 bg-slate-900 text-white text-base py-3 rounded-xl shadow-md border-0">Close Report</button>
     </div>
   </div>
@@ -1166,6 +1169,32 @@
       }).join('');
     }
 
+    function generateParentSummaryText(metrics) {
+      let text = `Great soccer match today! 🐅\nEveryone got equal play time (~${Math.round(metrics.targetMs / 60000)} mins each).\n\n🌟 Sportsmanship Badges Earned Today:\n`;
+      
+      metrics.players.forEach(p => {
+        const badges = Object.entries(p.badgeCounts)
+          .filter(([_, count]) => count > 0)
+          .map(([type, count]) => `${Engine.BADGE_MAP[type].icon} ${Engine.BADGE_MAP[type].title}${count > 1 ? ' x' + count : ''}`)
+          .join(', ');
+        
+        text += `• ${p.name}: ${badges || 'Great Team Play'}\n`;
+      });
+
+      text += `\nThanks coaches & parents for a fantastic game! ⚽`;
+      return text;
+    }
+
+    function showToast(msg) {
+      const banner = document.getElementById('storageBanner');
+      banner.textContent = msg;
+      banner.classList.remove('hidden');
+      setTimeout(() => {
+        banner.classList.add('hidden');
+        banner.textContent = "⚠ Not saving: storage unavailable.";
+      }, 3000);
+    }
+
     // Render loop logic
     function fmt(ms) {
       const totalS = Math.floor(Math.max(0, ms) / 1000);
@@ -1405,6 +1434,23 @@
         manageWakeLock();
         renderAll();
         if ('vibrate' in navigator) navigator.vibrate(40);
+      }
+      else if (action === 'copyParentRecap') {
+        const metrics = Engine.recapMetrics(state, Date.now());
+        const text = generateParentSummaryText(metrics);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(() => {
+            showToast("Copied parent summary to clipboard! 📋");
+          });
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showToast("Copied parent summary to clipboard! 📋");
+        }
       }
       else if (action === 'advancePeriodConfirm') advancePeriodConfirm();
       else if (action === 'advancePeriod') { closeModal(); dispatch('advancePeriod'); }
