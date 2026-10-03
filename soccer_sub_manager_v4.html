@@ -699,6 +699,101 @@
           }
         }
         return { ok: true, state: newState, errors: [] };
+      },
+      BADGE_MAP: {
+        hustle: { icon: '⚡', title: 'Great Hustle' },
+        save:   { icon: '🛡️', title: 'Big Save' },
+        pass:   { icon: '🤝', title: 'Great Pass' },
+        kick:   { icon: '🚀', title: 'Super Kick' },
+        teammate:{ icon: '🌟', title: 'Star Teammate' }
+      },
+      awardBadge: function(state, playerId, badgeType, now) {
+        const p = state.match.players[playerId];
+        const r = state.roster.find(x => x.id === playerId);
+        if (!p || !r || !this.BADGE_MAP[badgeType]) return state;
+
+        let newState = JSON.parse(JSON.stringify(state));
+        newState.match.undo = {
+          label: `Awarded ${this.BADGE_MAP[badgeType].title} to ${r.name}`,
+          keepClock: true,
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+
+        const newBadge = {
+          id: this.generateId(),
+          type: badgeType,
+          timestampMs: this.clockMs(state, now)
+        };
+
+        if (!Array.isArray(newState.match.players[playerId].badges)) {
+          newState.match.players[playerId].badges = [];
+        }
+        newState.match.players[playerId].badges.push(newBadge);
+        return newState;
+      },
+      removeBadge: function(state, playerId, badgeId, now) {
+        const p = state.match.players[playerId];
+        const r = state.roster.find(x => x.id === playerId);
+        if (!p || !r) return state;
+
+        const badge = (p.badges || []).find(b => b.id === badgeId);
+        if (!badge) return state;
+
+        let newState = JSON.parse(JSON.stringify(state));
+        newState.match.undo = {
+          label: `Removed ${this.BADGE_MAP[badge.type]?.title || 'Badge'} from ${r.name}`,
+          keepClock: true,
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+
+        newState.match.players[playerId].badges = (newState.match.players[playerId].badges || []).filter(b => b.id !== badgeId);
+        return newState;
+      },
+      recapMetrics: function(state, now) {
+        const activePlayers = state.roster.filter(r => state.match.players[r.id] && !state.match.players[r.id].resting);
+        const elapsedMs = state.match.clock.elapsedMs + (state.match.clock.running ? Math.max(0, now - state.match.clock.startedAt) : 0);
+        const totalPeriodElapsedMs = (state.match.period - 1) * state.settings.periodMinutes * 60 * 1000 + elapsedMs;
+        
+        const totalFieldMs = totalPeriodElapsedMs * state.settings.fieldSize;
+        const targetMs = activePlayers.length > 0 ? Math.round(totalFieldMs / activePlayers.length) : 0;
+
+        let totalBadges = 0;
+        let maxPlayerMs = 0;
+
+        const playerMetrics = state.roster.map(r => {
+          const p = state.match.players[r.id] || { periodMs: [], badges: [] };
+          const t = this.times(state, r.id, now);
+          const totalMs = t.totalMs;
+          if (totalMs > maxPlayerMs) maxPlayerMs = totalMs;
+
+          const badgeCounts = { hustle: 0, save: 0, pass: 0, kick: 0, teammate: 0 };
+          (p.badges || []).forEach(b => {
+            if (badgeCounts[b.type] !== undefined) badgeCounts[b.type]++;
+            totalBadges++;
+          });
+
+          const diff = totalMs - targetMs;
+          let fairnessStatus = 'equal';
+          if (diff > 90000) fairnessStatus = 'over';
+          else if (diff < -90000) fairnessStatus = 'under';
+
+          return {
+            id: r.id,
+            name: r.name,
+            totalMs,
+            targetDeltaMs: diff,
+            fairnessStatus,
+            badgeCounts,
+            badges: p.badges || []
+          };
+        });
+
+        return {
+          targetMs,
+          totalBadges,
+          maxPlayerMs: Math.max(maxPlayerMs, targetMs, 60000),
+          players: playerMetrics
+        };
       }
     };
     globalThis.Engine = Engine;
