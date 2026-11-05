@@ -275,6 +275,8 @@ const assert = require('node:assert');
 
     const foulModalTitle = await page.innerText('#modalTitle');
     assert.ok(foulModalTitle.includes(`${fouledOutPlayerName} Fouled Out`), `Modal title should state player fouled out, got "${foulModalTitle}"`);
+    const foulOnlyBtnVisible = await page.isVisible('button[data-action="confirmFoulOutOnly"]');
+    assert.strictEqual(foulOnlyBtnVisible, true, 'Modal should also include Mark Fouled Out Only option');
 
     await page.click('button[data-action="confirmFoulOutSub"]');
     await page.waitForFunction(() => document.getElementById('modalOverlay').classList.contains('hidden'));

@@ -2028,9 +2028,13 @@
           <button data-action="dismissMidSub" class="sun-btn" style="min-height:28px; padding:0 0.5rem; font-size:11px;">Dismiss</button>
         `;
       } else if (midStatus === 'due') {
+        const midMs = (state.settings.periodMinutes * 60 * 1000) / 2;
+        const midM = Math.floor(midMs / 60000);
+        const midS = Math.floor((midMs % 60000) / 1000);
+        const midStr = `${midM}:${midS.toString().padStart(2, '0')}`;
         midBanner.className = "sun-card bg-rose-100 border-rose-300 flex items-center justify-between gap-2";
         midBanner.innerHTML = `
-          <div class="text-xs font-bold text-rose-900">⏱ <strong>4:00 Mid-Quarter Sub Window!</strong></div>
+          <div class="text-xs font-bold text-rose-900">⏱ <strong>${midStr} Mid-Quarter Sub Window!</strong></div>
           <button data-action="dismissMidSub" class="sun-btn" style="min-height:28px; padding:0 0.5rem; font-size:11px;">Dismiss</button>
         `;
       } else {
@@ -2379,11 +2383,7 @@
       else if (action === 'copyParentRecap') {
         const metrics = Engine.recapMetrics(state, Date.now());
         const text = generateParentSummaryText(metrics);
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(() => {
-            showToast("Copied parent summary to clipboard! 📋");
-          });
-        } else {
+        const fallbackCopy = () => {
           const ta = document.createElement('textarea');
           ta.value = text;
           document.body.appendChild(ta);
@@ -2391,6 +2391,13 @@
           document.execCommand('copy');
           document.body.removeChild(ta);
           showToast("Copied parent summary to clipboard! 📋");
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(() => {
+            showToast("Copied parent summary to clipboard! 📋");
+          }).catch(fallbackCopy);
+        } else {
+          fallbackCopy();
         }
       }
       else if (action === 'advancePeriodConfirm') advancePeriodConfirm();
@@ -2421,6 +2428,7 @@
             const inName = state.roster.find(r => r.id === rec.inId)?.name || 'Bench Player';
             showModal(`${rName} Fouled Out`, `Sub in ${inName} now?`, `
               <button class="sun-btn bg-blue-700 text-white" data-action="confirmFoulOutSub" data-out-id="${id}" data-in-id="${rec.inId}">Swap & Mark Fouled Out</button>
+              <button class="sun-btn bg-slate-200 text-slate-900" data-action="confirmFoulOutOnly" data-id="${id}">Mark Fouled Out Only</button>
               <button class="sun-btn" data-action="closeModal">Cancel</button>
             `);
           } else {
@@ -2435,6 +2443,10 @@
         const inId = btn.getAttribute('data-in-id');
         closeModal();
         dispatch('foulOutAndSub', outId, inId);
+      }
+      else if (action === 'confirmFoulOutOnly') {
+        closeModal();
+        dispatch('toggleFoulOut', id);
       }
       else if (action === 'skipSub') dispatch('skip');
       else if (action === 'clearSkips') dispatch('clearSkips');
