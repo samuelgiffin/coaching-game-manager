@@ -222,4 +222,104 @@ test('Engine Multi-Sport Config, Schema & Multi-Point Scoring', async (t) => {
   });
 });
 
+test('Engine Basketball Line Swap, Mid-Quarter Alert & Foul-Out', async (t) => {
+  await t.test('recommendBatch selects pure equal-time wave swap (lowest totalMs IN, highest totalMs OUT)', () => {
+    let state = Engine.createState('basketball');
+    state.settings = { fieldSize: 5, periodMinutes: 8, periodCount: 4 };
+    state.roster = [
+      { id: 'p1', name: 'P1' },
+      { id: 'p2', name: 'P2' },
+      { id: 'p3', name: 'P3' },
+      { id: 'p4', name: 'P4' },
+      { id: 'p5', name: 'P5' },
+      { id: 'p6', name: 'P6' },
+      { id: 'p7', name: 'P7' },
+      { id: 'p8', name: 'P8' }
+    ];
+    state.starterIds = ['p1', 'p2', 'p3', 'p4', 'p5'];
+    state = Engine.resetMatch(state, 0);
+
+    // Give p1, p2, p3 more prior play time so they are top candidates to come OUT
+    state.match.players.p1.periodMs[0] = 120000;
+    state.match.players.p2.periodMs[0] = 100000;
+    state.match.players.p3.periodMs[0] = 80000;
+
+    const batch = Engine.recommendBatch(state, 240000);
+    assert.strictEqual(batch.status, 'ok');
+    assert.strictEqual(batch.inIds.length, 3);
+    assert.strictEqual(batch.outIds.length, 3);
+    assert.deepStrictEqual(batch.inIds, ['p6', 'p7', 'p8']);
+    assert.deepStrictEqual(batch.outIds, ['p1', 'p2', 'p3']);
+  });
+
+  await t.test('substituteBatch swaps all pairs, pauses clock, sets undo, and marks midSubDoneForPeriod', () => {
+    let state = Engine.createState('basketball');
+    state.settings = { fieldSize: 5, periodMinutes: 8, periodCount: 4 };
+    state.roster = [
+      { id: 'p1', name: 'P1' }, { id: 'p2', name: 'P2' }, { id: 'p3', name: 'P3' },
+      { id: 'p4', name: 'P4' }, { id: 'p5', name: 'P5' }, { id: 'p6', name: 'P6' },
+      { id: 'p7', name: 'P7' }
+    ];
+    state.starterIds = ['p1', 'p2', 'p3', 'p4', 'p5'];
+    state = Engine.resetMatch(state, 0);
+    state = Engine.start(state, 0);
+
+    // At 4:00 (240,000 ms), execute line swap of 2 players
+    state = Engine.substituteBatch(state, ['p1', 'p2'], ['p6', 'p7'], 240000);
+    assert.strictEqual(state.match.clock.running, false, 'Clock must pause on basketball batch sub');
+    assert.strictEqual(state.match.players.p1.onField, false);
+    assert.strictEqual(state.match.players.p2.onField, false);
+    assert.strictEqual(state.match.players.p6.onField, true);
+    assert.strictEqual(state.match.players.p7.onField, true);
+    assert.strictEqual(state.match.midSubDoneForPeriod, 1);
+    assert.ok(state.match.undo.label.includes('Line Sub'));
+  });
+
+  await t.test('midQuarterSubStatus transitions from upcoming -> warning (3:30) -> due (4:00) -> done', () => {
+    let state = Engine.createState('basketball');
+    state.settings = { fieldSize: 5, periodMinutes: 8, periodCount: 4 };
+    state.roster = [{ id: 'p1', name: 'P1' }, { id: 'p2', name: 'P2' }];
+    state.starterIds = ['p1'];
+    state = Engine.resetMatch(state, 0);
+    state = Engine.start(state, 0);
+
+    assert.strictEqual(Engine.midQuarterSubStatus(state, 60000), 'upcoming'); // 1:00
+    assert.strictEqual(Engine.midQuarterSubStatus(state, 210000), 'warning'); // 3:30
+    assert.strictEqual(Engine.midQuarterSubStatus(state, 240000), 'due');     // 4:00
+
+    state = Engine.dismissMidSub(state);
+    assert.strictEqual(Engine.midQuarterSubStatus(state, 250000), 'done');
+  });
+
+  await t.test('toggleFoulOut and foulOutAndSub exclude fouled-out players from recommendations and target share', () => {
+    let state = Engine.createState('basketball');
+    state.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    state.roster = [
+      { id: 'p1', name: 'P1' },
+      { id: 'p2', name: 'P2' },
+      { id: 'p3', name: 'P3' },
+      { id: 'p4', name: 'P4' }
+    ];
+    state.starterIds = ['p1', 'p2'];
+    state = Engine.resetMatch(state, 0);
+
+    // Foul out bench player p3
+    state = Engine.toggleFoulOut(state, 'p3', 1000);
+    assert.strictEqual(state.match.players.p3.fouledOut, true);
+
+    // Both single recommend and batch recommend should skip p3 and only pick p4
+    const rec = Engine.recommend(state, 1000);
+    assert.strictEqual(rec.inId, 'p4');
+    const batch = Engine.recommendBatch(state, 1000);
+    assert.deepStrictEqual(batch.inIds, ['p4']);
+
+    // Foul out active player p1 and sub in p4 atomically
+    state = Engine.foulOutAndSub(state, 'p1', 'p4', 2000);
+    assert.strictEqual(state.match.players.p1.onField, false);
+    assert.strictEqual(state.match.players.p1.fouledOut, true);
+    assert.strictEqual(state.match.players.p4.onField, true);
+  });
+});
+
+
 

@@ -1069,7 +1069,7 @@
           if (!p) continue;
 
           if (!p.onField) {
-            if (!p.resting && !state.match.skipIds.includes(r.id)) {
+            if (!p.resting && !p.fouledOut && !state.match.skipIds.includes(r.id)) {
               inCandidates.push({ id: r.id, t, p, index: state.roster.indexOf(r) });
             }
           } else {
@@ -1079,7 +1079,7 @@
 
         const nonRestingBenchCount = state.roster.filter(r => {
           let p = state.match.players[r.id];
-          return p && !p.onField && !p.resting;
+          return p && !p.onField && !p.resting && !p.fouledOut;
         }).length;
 
         if (nonRestingBenchCount === 0) {
@@ -1121,6 +1121,67 @@
         }
         return { outId: null, inId: null, status: 'none-eligible' };
       },
+      recommendBatch: function (state, now) {
+        let inCandidates = [];
+        let outCandidates = [];
+
+        for (let i = 0; i < state.roster.length; i++) {
+          const r = state.roster[i];
+          const p = state.match.players[r.id];
+          if (!p) continue;
+          const t = this.times(state, r.id, now);
+          if (!p.onField) {
+            if (!p.resting && !p.fouledOut && !state.match.skipIds.includes(r.id)) {
+              inCandidates.push({ id: r.id, t, p, index: i });
+            }
+          } else {
+            outCandidates.push({ id: r.id, t, p, index: i });
+          }
+        }
+
+        const eligibleBenchCount = state.roster.filter(r => {
+          const p = state.match.players[r.id];
+          return p && !p.onField && !p.resting && !p.fouledOut;
+        }).length;
+
+        if (eligibleBenchCount === 0) {
+          const anyBench = state.roster.some(r => {
+            const p = state.match.players[r.id];
+            return p && !p.onField;
+          });
+          if (!anyBench) return { outIds: [], inIds: [], pairs: [], status: 'no-bench' };
+          return { outIds: [], inIds: [], pairs: [], status: 'none-eligible' };
+        }
+
+        if (inCandidates.length === 0 && eligibleBenchCount > 0) {
+          return { outIds: [], inIds: [], pairs: [], status: 'all-skipped' };
+        }
+
+        inCandidates.sort((a, b) => {
+          if (a.id === state.match.pinnedId && b.id !== state.match.pinnedId) return -1;
+          if (b.id === state.match.pinnedId && a.id !== state.match.pinnedId) return 1;
+          if (a.t.totalMs !== b.t.totalMs) return a.t.totalMs - b.t.totalMs;
+          if (a.t.periodMs !== b.t.periodMs) return a.t.periodMs - b.t.periodMs;
+          if (a.t.satMs !== b.t.satMs) return b.t.satMs - a.t.satMs;
+          return a.index - b.index;
+        });
+
+        outCandidates.sort((a, b) => {
+          if (a.t.totalMs !== b.t.totalMs) return b.t.totalMs - a.t.totalMs;
+          if (a.t.shiftMs !== b.t.shiftMs) return b.t.shiftMs - a.t.shiftMs;
+          return a.index - b.index;
+        });
+
+        const swapCount = Math.min(inCandidates.length, outCandidates.length);
+        if (swapCount === 0) {
+          return { outIds: [], inIds: [], pairs: [], status: 'none-eligible' };
+        }
+
+        const outIds = outCandidates.slice(0, swapCount).map(c => c.id);
+        const inIds = inCandidates.slice(0, swapCount).map(c => c.id);
+        const pairs = outIds.map((outId, idx) => ({ outId, inId: inIds[idx] }));
+        return { outIds, inIds, pairs, status: 'ok' };
+      },
       substitute: function (state, outId, inId, now) {
         let newState = JSON.parse(JSON.stringify(state));
         newState = this.pause(newState, now);
@@ -1143,6 +1204,7 @@
         inP.onField = true;
         inP.stintStartMs = cMs;
         inP.resting = false;
+        inP.fouledOut = false;
 
         if (newState.match.pinnedId === inId) newState.match.pinnedId = null;
         newState.match.skipIds = [];
@@ -1152,6 +1214,124 @@
           newState.match.clock.running = true;
           newState.match.clock.startedAt = now;
         }
+        return newState;
+      },
+      substituteBatch: function (state, outIds, inIds, now) {
+        if (!Array.isArray(outIds) || !Array.isArray(inIds) || outIds.length === 0 || outIds.length !== inIds.length) {
+          return state;
+        }
+        let newState = JSON.parse(JSON.stringify(state));
+        newState = this.pause(newState, now);
+
+        for (let i = 0; i < outIds.length; i++) {
+          const outP = newState.match.players[outIds[i]];
+          const inP = newState.match.players[inIds[i]];
+          if (!outP || !inP || !outP.onField || inP.onField) return state;
+        }
+
+        const cMs = this.clockMs(newState, now);
+        newState.match.undo = {
+          label: `Line Sub (${outIds.length} ⇄ ${inIds.length})`,
+          keepClock: false,
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+
+        for (let i = 0; i < outIds.length; i++) {
+          const outP = newState.match.players[outIds[i]];
+          outP.periodMs[newState.match.period - 1] = (outP.periodMs[newState.match.period - 1] || 0) + (cMs - outP.stintStartMs);
+          outP.onField = false;
+          outP.stintStartMs = cMs;
+        }
+
+        for (let i = 0; i < inIds.length; i++) {
+          const inP = newState.match.players[inIds[i]];
+          inP.onField = true;
+          inP.stintStartMs = cMs;
+          inP.resting = false;
+          inP.fouledOut = false;
+        }
+
+        if (inIds.includes(newState.match.pinnedId)) newState.match.pinnedId = null;
+        newState.match.skipIds = [];
+        newState.match.lastSubOutId = outIds[outIds.length - 1] || null;
+
+        const midWarnMs = (newState.settings.periodMinutes * 60 * 1000) / 2 - 30000;
+        if (cMs >= midWarnMs) {
+          newState.match.midSubDoneForPeriod = newState.match.period;
+        }
+
+        return newState;
+      },
+      midQuarterSubStatus: function (state, now) {
+        const cfg = this.getSportConfig(state);
+        if (cfg.subMode !== 'batch') return 'none';
+        const periodMs = state.settings.periodMinutes * 60 * 1000;
+        const midMs = periodMs / 2;
+        const warnMs = Math.max(0, midMs - (cfg.midSubWarningLeadMs || 30000));
+        const cMs = this.clockMs(state, now);
+
+        if (state.match.midSubDoneForPeriod === state.match.period || cMs >= periodMs) {
+          return 'done';
+        }
+        if (cMs >= midMs) return 'due';
+        if (cMs >= warnMs) return 'warning';
+        return 'upcoming';
+      },
+      dismissMidSub: function (state) {
+        const newState = JSON.parse(JSON.stringify(state));
+        newState.match.midSubDoneForPeriod = newState.match.period;
+        return newState;
+      },
+      toggleFoulOut: function (state, playerId, now) {
+        const p = state.match.players[playerId];
+        if (!p) return state;
+        const newState = JSON.parse(JSON.stringify(state));
+        const r = state.roster.find(x => x.id === playerId);
+        const target = newState.match.players[playerId];
+        target.fouledOut = !target.fouledOut;
+        if (target.fouledOut && newState.match.pinnedId === playerId) {
+          newState.match.pinnedId = null;
+        }
+        newState.match.undo = {
+          label: `${r ? r.name : 'Player'} ${target.fouledOut ? 'Fouled Out' : 'Cleared Foul Out'}`,
+          keepClock: true,
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+        return newState;
+      },
+      foulOutAndSub: function (state, outId, inId, now) {
+        let newState = JSON.parse(JSON.stringify(state));
+        newState = this.pause(newState, now);
+
+        const outP = newState.match.players[outId];
+        const inP = newState.match.players[inId];
+        if (!outP || !inP || !outP.onField || inP.onField) return state;
+
+        const cMs = this.clockMs(newState, now);
+        const outName = state.roster.find(r => r.id === outId)?.name || 'Out';
+        const inName = state.roster.find(r => r.id === inId)?.name || 'In';
+        newState.match.undo = {
+          label: `Foul Out: ${outName} ⇄ ${inName}`,
+          keepClock: false,
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+
+        outP.periodMs[newState.match.period - 1] = (outP.periodMs[newState.match.period - 1] || 0) + (cMs - outP.stintStartMs);
+        outP.onField = false;
+        outP.stintStartMs = cMs;
+        outP.fouledOut = true;
+
+        inP.onField = true;
+        inP.stintStartMs = cMs;
+        inP.resting = false;
+        inP.fouledOut = false;
+
+        if (newState.match.pinnedId === inId || newState.match.pinnedId === outId) {
+          newState.match.pinnedId = null;
+        }
+        newState.match.skipIds = [];
+        newState.match.lastSubOutId = outId;
+
         return newState;
       },
       skip: function (state, now) {
