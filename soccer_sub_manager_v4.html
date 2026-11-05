@@ -702,12 +702,14 @@
             class="text-xs bg-slate-800 text-emerald-400 font-bold px-2 py-0.5 rounded border border-slate-700 whitespace-nowrap">📊
             Report ❯</span>
         </button>
-        <button data-action="scoreThem" class="sun-btn text-white"
-          style="background-color: #b91c1c; min-height: 42px; white-space:nowrap;">+ Them</button>
+        <div id="scoreThemControls" class="flex items-center gap-2">
+          <button data-action="scoreThem" data-points="1" class="sun-btn text-white"
+            style="background-color: #b91c1c; min-height: 42px; white-space:nowrap;">+ Them</button>
+        </div>
       </div>
       <div class="flex items-center justify-between gap-2">
         <div>
-          <div class="text-xs uppercase font-black" id="periodBadge">Period 1 / 4</div>
+          <div class="text-xs font-black" id="periodBadge">Period 1 / 4</div>
           <div class="font-mono-nums text-4xl font-black" id="clockDisplay">00:00</div>
         </div>
         <div class="flex items-center gap-2">
@@ -726,28 +728,33 @@
       </div>
     </div>
 
+    <div id="midSubBanner" class="sun-card hidden"></div>
+
     <div id="recommendCard" class="sun-card bg-cobalt-bg hidden">
-      <div class="text-xs font-black uppercase mb-4 text-blue-900">Recommended Sub</div>
-      <div class="flex gap-2 mb-4">
-        <div class="w-full">
-          <div class="text-xs font-bold uppercase text-red-700">OUT</div>
-          <div class="font-black text-xl" id="recOutName">--</div>
-          <div class="text-xs font-mono-nums">Shift: <span id="recOutShift" data-t="recOutShift">00:00</span></div>
+      <div id="rollingRecView">
+        <div class="text-xs font-black uppercase mb-4 text-blue-900">Recommended Sub</div>
+        <div class="flex gap-2 mb-4">
+          <div class="w-full">
+            <div class="text-xs font-bold uppercase text-red-700">OUT</div>
+            <div class="font-black text-xl" id="recOutName">--</div>
+            <div class="text-xs font-mono-nums">Shift: <span id="recOutShift" data-t="recOutShift">00:00</span></div>
+          </div>
+          <div class="w-full">
+            <div class="text-xs font-bold uppercase text-green-700">IN</div>
+            <div class="font-black text-xl" id="recInName">--</div>
+            <div class="text-xs font-mono-nums">Sat: <span id="recInSat" data-t="recInSat">00:00</span></div>
+          </div>
         </div>
-        <div class="w-full">
-          <div class="text-xs font-bold uppercase text-green-700">IN</div>
-          <div class="font-black text-xl" id="recInName">--</div>
-          <div class="text-xs font-mono-nums">Sat: <span id="recInSat" data-t="recInSat">00:00</span></div>
+        <div class="flex gap-2">
+          <button data-action="makeSub" class="sun-btn bg-blue-700 w-full">Make Sub</button>
+          <button data-action="skipSub" class="sun-btn bg-amber-400">⏭ Skip</button>
+        </div>
+        <div id="queueNotice" class="text-xs font-bold mt-2 hidden">
+          ⚡ <span id="queueNoticeName"></span> is next up
+          <button data-action="clearSkips" class="sun-btn" style="min-height:24px; padding:0 0.5rem">Clear</button>
         </div>
       </div>
-      <div class="flex gap-2">
-        <button data-action="makeSub" class="sun-btn bg-blue-700 w-full">Make Sub</button>
-        <button data-action="skipSub" class="sun-btn bg-amber-400">⏭ Skip</button>
-      </div>
-      <div id="queueNotice" class="text-xs font-bold mt-2 hidden">
-        ⚡ <span id="queueNoticeName"></span> is next up
-        <button data-action="clearSkips" class="sun-btn" style="min-height:24px; padding:0 0.5rem">Clear</button>
-      </div>
+      <div id="batchRecView" class="hidden"></div>
     </div>
 
     <div id="allSkippedNotice" class="sun-card bg-amber-bg hidden">
@@ -760,7 +767,7 @@
     </div>
 
     <div class="mt-4 mb-4">
-      <div class="text-xs font-black uppercase mb-2">On Field (<span id="fieldCount">0</span>)</div>
+      <div id="surfaceHeader" class="text-xs font-black mb-2"><span id="surfaceLabelText">On Field</span> (<span id="fieldCount">0</span>)</div>
       <div id="fieldList" class="card-list"></div>
     </div>
 
@@ -770,7 +777,7 @@
     </div>
 
     <div class="flex gap-2 mt-4 pt-4 border-t-2">
-      <button data-action="advancePeriodConfirm" class="sun-btn w-full">Next Period →</button>
+      <button id="advancePeriodConfirmBtn" data-action="advancePeriodConfirm" class="sun-btn w-full">Next Period →</button>
       <button data-action="resetMatchConfirm" class="sun-btn">Reset</button>
     </div>
   </main>
@@ -804,9 +811,14 @@
 
       <div id="setupErrors" class="hidden text-sm font-bold mb-4" style="color:#b91c1c;"></div>
 
+      <div class="flex gap-2 mb-4" id="sportSelector">
+        <button data-action="selectSport" data-sport="soccer" class="sun-btn bg-slate-900 w-full">⚽ Soccer</button>
+        <button data-action="selectSport" data-sport="basketball" class="sun-btn bg-slate-100 text-slate-700 w-full">🏀 Basketball</button>
+      </div>
+
       <div class="flex gap-2 mb-4">
         <div class="w-full">
-          <label class="text-xs font-black uppercase">Field Size</label>
+          <label id="setupSizeLabel" class="text-xs font-black uppercase">Field Size</label>
           <input type="number" id="draftFieldSize" class="setup-input" min="2" max="11" value="5">
         </div>
         <div class="w-full">
@@ -1220,6 +1232,9 @@
         if (!Array.isArray(outIds) || !Array.isArray(inIds) || outIds.length === 0 || outIds.length !== inIds.length) {
           return state;
         }
+        if (new Set(outIds).size !== outIds.length || new Set(inIds).size !== inIds.length) {
+          return state;
+        }
         let newState = JSON.parse(JSON.stringify(state));
         newState = this.pause(newState, now);
 
@@ -1255,7 +1270,8 @@
         newState.match.skipIds = [];
         newState.match.lastSubOutId = outIds[outIds.length - 1] || null;
 
-        const midWarnMs = (newState.settings.periodMinutes * 60 * 1000) / 2 - 30000;
+        const cfg = this.getSportConfig(newState);
+        const midWarnMs = (newState.settings.periodMinutes * 60 * 1000) / 2 - (cfg.midSubWarningLeadMs || 30000);
         if (cMs >= midWarnMs) {
           newState.match.midSubDoneForPeriod = newState.match.period;
         }
@@ -1477,6 +1493,7 @@
 
         if (errors.length > 0) return { ok: false, state, errors };
         let newState = JSON.parse(JSON.stringify(state));
+        newState.sport = draft.sport || state.sport || 'soccer';
         const matchStarted = newState.match.period > 1 || newState.match.clock.elapsedMs > 0 || newState.match.clock.running;
 
         if (!matchStarted) {
@@ -1618,6 +1635,7 @@
     let manualInId = null;
     let wakeLock = null;
     let activeBadgeDrawerPid = null;
+    let lastMidSubStatus = null;
 
     // Save initial HTML immediately before any render
     const APP_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
@@ -1626,40 +1644,70 @@
       document.getElementById('crashBanner').classList.remove('hidden');
     });
 
-    function load() {
-      let raw = localStorage.getItem('SSM_V3');
+    function getActiveSport() {
+      return localStorage.getItem('CGM_ACTIVE_SPORT') === 'basketball' ? 'basketball' : 'soccer';
+    }
+
+    function load(sportOverride) {
+      const activeSport = sportOverride === 'basketball' || sportOverride === 'soccer'
+        ? sportOverride
+        : getActiveSport();
+      const sportCfg = Engine.getSportConfig(activeSport);
+      const storageKey = sportCfg.storageKey;
+      let raw = localStorage.getItem(storageKey);
       if (raw) {
         try {
           let parsed = JSON.parse(raw);
+          parsed.sport = activeSport;
           state = Engine.normalize(parsed);
         } catch (err) {
-          localStorage.setItem('SSM_V3_corrupt', raw);
-          state = Engine.createState();
-          document.getElementById('storageBanner').textContent = "⚠ Corrupt data recovered. Old data saved to SSM_V3_corrupt.";
+          localStorage.setItem(`${storageKey}_corrupt`, raw);
+          state = Engine.createState(activeSport);
+          document.getElementById('storageBanner').textContent = `⚠ Corrupt data recovered. Old data saved to ${storageKey}_corrupt.`;
           document.getElementById('storageBanner').classList.remove('hidden');
         }
-      } else {
-        // v2 migration attempt
+      } else if (activeSport === 'soccer') {
         let v2raw = localStorage.getItem('SOCCER_SUB_TRACKER_SUNLIGHT_V1');
         if (v2raw) {
           try {
             state = Engine.normalize(JSON.parse(v2raw));
-          } catch (e) { }
+          } catch (e) {
+            state = Engine.createState('soccer');
+          }
+        } else {
+          state = Engine.createState('soccer');
         }
+      } else {
+        state = Engine.createState(activeSport);
       }
+      state.sport = activeSport;
 
-      if (state.roster.length === 0) {
+      if (!sportOverride && state.roster.length === 0) {
         openSetup();
       }
     }
 
     function save() {
       try {
-        localStorage.setItem('SSM_V3', JSON.stringify(state));
+        const sportCfg = Engine.getSportConfig(state);
+        localStorage.setItem('CGM_ACTIVE_SPORT', sportCfg.id);
+        localStorage.setItem(sportCfg.storageKey, JSON.stringify(state));
         document.getElementById('storageBanner').classList.add('hidden');
       } catch (e) {
         document.getElementById('storageBanner').classList.remove('hidden');
       }
+    }
+
+    function switchSport(targetSport) {
+      const validTarget = targetSport === 'basketball' ? 'basketball' : 'soccer';
+      save();
+      localStorage.setItem('CGM_ACTIVE_SPORT', validTarget);
+      load(validTarget);
+      state.sport = validTarget;
+      draft = JSON.parse(JSON.stringify(state));
+      draft.starterIds = draft.starterIds || [];
+      renderSetup();
+      renderAll();
     }
 
     async function manageWakeLock() {
@@ -1702,8 +1750,9 @@
     }
 
     function advancePeriodConfirm() {
+      const sportCfg = Engine.getSportConfig(state);
       if (state.match.period >= state.settings.periodCount) {
-        showModal("🏆 Full Time — Match Complete!", "All periods are finished. View player fairness recap and summary or start a new match?", `
+        showModal(`🏆 ${sportCfg.gameOverLabel} — Match Complete!`, `All ${sportCfg.periodLabel.toLowerCase()}s are finished. View player fairness recap and summary or start a new match?`, `
           <button class="sun-btn bg-emerald-600 text-white font-bold" data-action="openMatchLog">📊 View Match Report</button>
           <button class="sun-btn" data-action="closeModal">Keep Reviewing</button>
           <button class="sun-btn bg-slate-200 text-slate-800" data-action="resetMatchConfirm">New Match</button>
@@ -1716,9 +1765,9 @@
         const left = pMs - cMs;
         const m = Math.floor(left / 60000);
         const s = Math.floor((left % 60000) / 1000);
-        showModal("Advance early?", `${m}:${s.toString().padStart(2, '0')} left in this period. Advance anyway?`, `
+        showModal("Advance early?", `${m}:${s.toString().padStart(2, '0')} left in this ${sportCfg.periodLabel.toLowerCase()}. Advance anyway?`, `
           <button class="sun-btn" data-action="closeModal">Cancel</button>
-          <button class="sun-btn bg-slate-900" data-action="advancePeriod">Advance Period</button>
+          <button class="sun-btn bg-slate-900" data-action="advancePeriod">Advance ${sportCfg.periodLabel}</button>
         `);
       } else {
         dispatch('advancePeriod');
@@ -1735,7 +1784,6 @@
     // Setup Draft
     function openSetup() {
       draft = JSON.parse(JSON.stringify(state));
-      // pre-fill draft if new match, draft doesn't have starterIds
       draft.starterIds = draft.starterIds || [];
       renderSetup();
       document.getElementById('setupModal').classList.remove('hidden');
@@ -1748,7 +1796,18 @@
 
     function renderSetup() {
       document.getElementById('setupErrors').classList.add('hidden');
+      const sportCfg = Engine.getSportConfig(draft || state);
       const matchStarted = state.match.period > 1 || state.match.clock.elapsedMs > 0 || state.match.clock.running;
+
+      const sizeLabelEl = document.getElementById('setupSizeLabel');
+      if (sizeLabelEl) sizeLabelEl.textContent = sportCfg.sizeLabel;
+
+      document.querySelectorAll('#sportSelector button[data-action="selectSport"]').forEach(btn => {
+        const isCurrent = btn.getAttribute('data-sport') === sportCfg.id;
+        btn.className = isCurrent
+          ? "sun-btn bg-slate-900 text-white w-full"
+          : "sun-btn bg-slate-100 text-slate-700 w-full";
+      });
 
       document.getElementById('draftFieldSize').value = draft.settings.fieldSize;
       document.getElementById('draftMinutes').value = draft.settings.periodMinutes;
@@ -1782,6 +1841,7 @@
       draft.settings.periodCount = state.settings.periodCount || 4; // keeping existing
 
       const draftObj = {
+        sport: draft.sport || state.sport || 'soccer',
         fieldSize: draft.settings.fieldSize,
         periodMinutes: draft.settings.periodMinutes,
         periodCount: draft.settings.periodCount,
@@ -1802,13 +1862,16 @@
     }
 
     function renderMatchLog() {
+      const sportCfg = Engine.getSportConfig(state);
+      const isBball = sportCfg.id === 'basketball';
+      const pShort = sportCfg.periodShort;
       const dateOpts = { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
       document.getElementById('logDateTime').textContent = new Date().toLocaleDateString('en-US', dateOpts);
       document.getElementById('logScore').textContent = `${state.match.score.us} - ${state.match.score.them}`;
 
       const timelineEl = document.getElementById('logTimeline');
       if (!state.match.events || state.match.events.length === 0) {
-        timelineEl.innerHTML = '<span class="text-slate-400">No goals recorded</span>';
+        timelineEl.innerHTML = `<span class="text-slate-400">No ${isBball ? 'points' : 'goals'} recorded</span>`;
       } else {
         const sortedEvents = [...state.match.events].sort((a, b) => {
           if (a.period !== b.period) return a.period - b.period;
@@ -1816,15 +1879,22 @@
         });
 
         timelineEl.innerHTML = sortedEvents.map(evt => {
+          const pts = evt.points || 1;
           if (evt.type === 'goal_us') {
             const name = state.roster.find(r => r.id === evt.playerId)?.name || 'Unknown';
+            const label = isBball
+              ? `${pShort}${evt.period} ${fmt(evt.clockMs)} - ${name} 🏀 +${pts}`
+              : `${pShort}${evt.period} ${fmt(evt.clockMs)} - ${name} ⚽`;
             return `<span class="bg-emerald-100 text-emerald-900 px-2 py-1 rounded border border-emerald-300 flex items-center gap-1">
-              P${evt.period} ${fmt(evt.clockMs)} - ${name} ⚽
+              ${label}
               <span data-action="deleteEventBtn" data-id="${evt.id}" class="ml-1 text-emerald-700 cursor-pointer font-black px-1" title="Delete">&times;</span>
             </span>`;
           } else {
+            const label = isBball
+              ? `${pShort}${evt.period} ${fmt(evt.clockMs)} - Them 🏀 +${pts}`
+              : `${pShort}${evt.period} ${fmt(evt.clockMs)} - Them ⚽`;
             return `<span class="bg-rose-100 text-rose-900 px-2 py-1 rounded border border-rose-300 flex items-center gap-1">
-              P${evt.period} ${fmt(evt.clockMs)} - Them ⚽
+              ${label}
               <span data-action="deleteEventBtn" data-id="${evt.id}" class="ml-1 text-rose-700 cursor-pointer font-black px-1" title="Delete">&times;</span>
             </span>`;
           }
@@ -1832,19 +1902,22 @@
       }
 
       const scorersEl = document.getElementById('logTopScorers');
-      let scorerCounts = {};
+      let scorerTotals = {};
       (state.match.events || []).forEach(evt => {
         if (evt.type === 'goal_us' && evt.playerId) {
-          scorerCounts[evt.playerId] = (scorerCounts[evt.playerId] || 0) + 1;
+          scorerTotals[evt.playerId] = (scorerTotals[evt.playerId] || 0) + (isBball ? (evt.points || 1) : 1);
         }
       });
-      const topIds = Object.keys(scorerCounts).sort((a, b) => scorerCounts[b] - scorerCounts[a]);
+      const topIds = Object.keys(scorerTotals).sort((a, b) => scorerTotals[b] - scorerTotals[a]);
       if (topIds.length === 0) {
         scorersEl.innerHTML = '<span class="text-slate-400">None yet</span>';
       } else {
         scorersEl.innerHTML = topIds.map(id => {
           const name = state.roster.find(r => r.id === id)?.name || 'Unknown';
-          return `<span class="bg-slate-100 border border-slate-300 px-2 py-1 rounded">${name} ${'⚽'.repeat(scorerCounts[id])}</span>`;
+          const summary = isBball
+            ? `${name} 🏀 ${scorerTotals[id]} pts`
+            : `${name} ${'⚽'.repeat(scorerTotals[id])}`;
+          return `<span class="bg-slate-100 border border-slate-300 px-2 py-1 rounded">${summary}</span>`;
         }).join('');
       }
 
@@ -1869,7 +1942,7 @@
         return `
           <div class="gauge-row">
             <div class="gauge-header">
-              <span>${p.name}</span>
+              <span>${p.name}${p.fouledOut ? ' (Fouled Out)' : ''}</span>
               <span class="font-mono-nums">${fmt(p.totalMs)}</span>
             </div>
             <div class="gauge-bar-track">
@@ -1883,7 +1956,10 @@
     }
 
     function generateParentSummaryText(metrics) {
-      let text = `Great soccer match today! 🐅\nEveryone got equal play time (~${Math.round(metrics.targetMs / 60000)} mins each).\n\n🌟 Sportsmanship Badges Earned Today:\n`;
+      const isBball = state.sport === 'basketball';
+      let text = isBball
+        ? `Great basketball game today! 🏀\nEveryone got equal court time (~${Math.round(metrics.targetMs / 60000)} mins each).\n\n🌟 Sportsmanship Badges Earned Today:\n`
+        : `Great soccer match today! 🐅\nEveryone got equal play time (~${Math.round(metrics.targetMs / 60000)} mins each).\n\n🌟 Sportsmanship Badges Earned Today:\n`;
 
       metrics.players.forEach(p => {
         const badges = Object.entries(p.badgeCounts)
@@ -1894,7 +1970,9 @@
         text += `• ${p.name}: ${badges || 'Great Team Play'}\n`;
       });
 
-      text += `\nThanks coaches & parents for a fantastic game! ⚽`;
+      text += isBball
+        ? `\nThanks coaches & parents for a fantastic game! 🏀`
+        : `\nThanks coaches & parents for a fantastic game! ⚽`;
       return text;
     }
 
@@ -1931,8 +2009,42 @@
       return "fairness-neutral";
     }
 
+    function updateMidSubBanner(now, forceRender) {
+      const midBanner = document.getElementById('midSubBanner');
+      if (!midBanner) return;
+      const midStatus = Engine.midQuarterSubStatus(state, now);
+      if (!forceRender && midStatus === lastMidSubStatus) return;
+      lastMidSubStatus = midStatus;
+
+      if (midStatus === 'warning') {
+        const batch = Engine.recommendBatch(state, now);
+        const inNames = batch.inIds
+          .map(id => state.roster.find(r => r.id === id)?.name)
+          .filter(Boolean)
+          .join(', ') || 'bench players';
+        midBanner.className = "sun-card bg-amber-bg flex items-center justify-between gap-2";
+        midBanner.innerHTML = `
+          <div class="text-xs font-bold">🔔 <strong>30s to Mid-Quarter Sub!</strong> Send ${inNames} to Scorer's Table</div>
+          <button data-action="dismissMidSub" class="sun-btn" style="min-height:28px; padding:0 0.5rem; font-size:11px;">Dismiss</button>
+        `;
+      } else if (midStatus === 'due') {
+        midBanner.className = "sun-card bg-rose-100 border-rose-300 flex items-center justify-between gap-2";
+        midBanner.innerHTML = `
+          <div class="text-xs font-bold text-rose-900">⏱ <strong>4:00 Mid-Quarter Sub Window!</strong></div>
+          <button data-action="dismissMidSub" class="sun-btn" style="min-height:28px; padding:0 0.5rem; font-size:11px;">Dismiss</button>
+        `;
+      } else {
+        midBanner.className = "sun-card hidden";
+        midBanner.innerHTML = '';
+      }
+    }
+
     function renderAll() {
       const now = Date.now();
+      const sportCfg = Engine.getSportConfig(state);
+      const isBball = sportCfg.id === 'basketball';
+
+      document.title = sportCfg.appTitle;
 
       if (state.match.undo) {
         document.getElementById('undoLabel').textContent = state.match.undo.label;
@@ -1941,7 +2053,22 @@
         document.getElementById('undoBar').classList.add('hidden');
       }
 
-      document.getElementById('periodBadge').textContent = `Period ${state.match.period} / ${state.settings.periodCount}`;
+      const scoreThemControls = document.getElementById('scoreThemControls');
+      if (scoreThemControls) {
+        if (sportCfg.scoreIncrements.length > 1) {
+          scoreThemControls.innerHTML = sportCfg.scoreIncrements.map(pts =>
+            `<button data-action="scoreThem" data-points="${pts}" class="sun-btn text-white" style="background-color: #b91c1c; min-height: 42px; padding: 0 0.55rem; font-size: 12px; white-space:nowrap;">+${pts}</button>`
+          ).join('');
+        } else {
+          scoreThemControls.innerHTML = `<button data-action="scoreThem" data-points="1" class="sun-btn text-white" style="background-color: #b91c1c; min-height: 42px; white-space:nowrap;">+ Them</button>`;
+        }
+      }
+
+      document.getElementById('periodBadge').textContent = `${sportCfg.periodLabel} ${state.match.period} / ${state.settings.periodCount}`;
+      const surfaceLabelEl = document.getElementById('surfaceLabelText');
+      if (surfaceLabelEl) surfaceLabelEl.textContent = sportCfg.surfaceLabel;
+      const advBtnEl = document.getElementById('advancePeriodConfirmBtn');
+      if (advBtnEl) advBtnEl.textContent = `Next ${sportCfg.periodLabel} →`;
 
       const cMs = Engine.clockMs(state, now);
       const pMs = state.settings.periodMinutes * 60 * 1000;
@@ -1962,20 +2089,20 @@
           dispatch('pause');
           if ('vibrate' in navigator) navigator.vibrate(isFinalPeriod ? [300, 100, 300] : 300);
           if (isFinalPeriod) {
-            showModal("🏆 Full Time — Match Complete!", `All ${state.settings.periodCount} periods are finished! Review player playing time, fairness gauge, and generate parent SMS recap.`, `
+            showModal(`🏆 ${sportCfg.gameOverLabel} — Match Complete!`, `All ${state.settings.periodCount} ${sportCfg.periodLabel.toLowerCase()}s are finished! Review player playing time, fairness gauge, and generate parent SMS recap.`, `
                  <button class="sun-btn bg-emerald-600 text-white font-bold" data-action="openMatchLog">📊 View Match Report</button>
-                 <button class="sun-btn" data-action="closeModal">Review Field</button>
+                 <button class="sun-btn" data-action="closeModal">Review ${sportCfg.surfaceLabel}</button>
                `);
           }
         }
         if (banner) {
           banner.classList.remove('hidden');
           if (isFinalPeriod) {
-            if (bannerText) bannerText.innerHTML = `🏆 <strong>Full Time!</strong> Match Complete (${state.match.score.us} - ${state.match.score.them})`;
+            if (bannerText) bannerText.innerHTML = `🏆 <strong>${sportCfg.gameOverLabel}!</strong> Match Complete (${state.match.score.us} - ${state.match.score.them})`;
             if (bannerActions) bannerActions.innerHTML = `<button data-action="openMatchLog" class="sun-btn bg-emerald-600 text-white font-black">📊 View Report</button>`;
           } else {
-            if (bannerText) bannerText.innerHTML = `⏱ Period ${state.match.period} completed!`;
-            if (bannerActions) bannerActions.innerHTML = `<button data-action="advancePeriod" class="sun-btn bg-slate-900 font-black">Next Period →</button>`;
+            if (bannerText) bannerText.innerHTML = `⏱ ${sportCfg.periodLabel} ${state.match.period} completed!`;
+            if (bannerActions) bannerActions.innerHTML = `<button data-action="advancePeriod" class="sun-btn bg-slate-900 font-black">Next ${sportCfg.periodLabel} →</button>`;
           }
         }
       } else {
@@ -1991,31 +2118,77 @@
         btn.className = "sun-btn bg-emerald-600";
       }
 
+      updateMidSubBanner(now, true);
+
       // Recommendations
-      const rec = Engine.recommend(state, now);
-      document.getElementById('recommendCard').classList.add('hidden');
+      const recCard = document.getElementById('recommendCard');
+      const rollingView = document.getElementById('rollingRecView');
+      const batchView = document.getElementById('batchRecView');
+      recCard.classList.add('hidden');
       document.getElementById('allSkippedNotice').classList.add('hidden');
       document.getElementById('noneEligibleNotice').classList.add('hidden');
 
-      if (rec.status === 'ok') {
-        document.getElementById('recommendCard').classList.remove('hidden');
-        document.getElementById('recOutName').textContent = state.roster.find(r => r.id === rec.outId)?.name || '--';
-        document.getElementById('recInName').textContent = state.roster.find(r => r.id === rec.inId)?.name || '--';
-        document.getElementById('recOutShift').setAttribute('data-id', rec.outId);
-        document.getElementById('recInSat').setAttribute('data-id', rec.inId);
-        document.getElementById('recommendCard').dataset.outId = rec.outId;
-        document.getElementById('recommendCard').dataset.inId = rec.inId;
-      } else if (rec.status === 'all-skipped') {
-        document.getElementById('allSkippedNotice').classList.remove('hidden');
-      } else if (rec.status === 'none-eligible') {
-        document.getElementById('noneEligibleNotice').classList.remove('hidden');
-      }
-
-      if (state.match.pinnedId) {
-        document.getElementById('queueNotice').classList.remove('hidden');
-        document.getElementById('queueNoticeName').textContent = state.roster.find(r => r.id === state.match.pinnedId)?.name || '--';
+      if (sportCfg.subMode === 'batch') {
+        rollingView.classList.add('hidden');
+        batchView.classList.remove('hidden');
+        const batch = Engine.recommendBatch(state, now);
+        if (batch.status === 'ok') {
+          recCard.classList.remove('hidden');
+          recCard.dataset.batchOutIds = JSON.stringify(batch.outIds);
+          recCard.dataset.batchInIds = JSON.stringify(batch.inIds);
+          const outListHtml = batch.outIds.map(outId => {
+            const name = state.roster.find(r => r.id === outId)?.name || '--';
+            const t = Engine.times(state, outId, now);
+            return `<div class="mb-1"><span class="font-black text-base">${name}</span> <span class="text-xs font-mono-nums">(Shift: <span data-t="recOutShift" data-id="${outId}">${fmt(t.shiftMs)}</span>)</span></div>`;
+          }).join('');
+          const inListHtml = batch.inIds.map(inId => {
+            const name = state.roster.find(r => r.id === inId)?.name || '--';
+            const t = Engine.times(state, inId, now);
+            return `<div class="mb-1"><span class="font-black text-base">${name}</span> <span class="text-xs font-mono-nums">(Sat: <span data-t="recInSat" data-id="${inId}">${fmt(t.satMs)}</span>)</span></div>`;
+          }).join('');
+          batchView.innerHTML = `
+            <div class="text-xs font-black mb-2 text-blue-900">Recommended Line Sub (${batch.outIds.length} ⇄ ${batch.inIds.length})</div>
+            <div class="flex gap-2 mb-3">
+              <div class="w-full">
+                <div class="text-xs font-bold uppercase text-red-700 mb-1">OUT</div>
+                ${outListHtml}
+              </div>
+              <div class="w-full">
+                <div class="text-xs font-bold uppercase text-green-700 mb-1">IN</div>
+                ${inListHtml}
+              </div>
+            </div>
+            <button data-action="makeBatchSub" class="sun-btn bg-blue-700 w-full">Make Line Sub (${batch.outIds.length} ⇄ ${batch.inIds.length})</button>
+          `;
+        } else if (batch.status === 'all-skipped') {
+          document.getElementById('allSkippedNotice').classList.remove('hidden');
+        } else if (batch.status === 'none-eligible') {
+          document.getElementById('noneEligibleNotice').classList.remove('hidden');
+        }
       } else {
-        document.getElementById('queueNotice').classList.add('hidden');
+        rollingView.classList.remove('hidden');
+        batchView.classList.add('hidden');
+        const rec = Engine.recommend(state, now);
+        if (rec.status === 'ok') {
+          recCard.classList.remove('hidden');
+          document.getElementById('recOutName').textContent = state.roster.find(r => r.id === rec.outId)?.name || '--';
+          document.getElementById('recInName').textContent = state.roster.find(r => r.id === rec.inId)?.name || '--';
+          document.getElementById('recOutShift').setAttribute('data-id', rec.outId);
+          document.getElementById('recInSat').setAttribute('data-id', rec.inId);
+          recCard.dataset.outId = rec.outId;
+          recCard.dataset.inId = rec.inId;
+        } else if (rec.status === 'all-skipped') {
+          document.getElementById('allSkippedNotice').classList.remove('hidden');
+        } else if (rec.status === 'none-eligible') {
+          document.getElementById('noneEligibleNotice').classList.remove('hidden');
+        }
+
+        if (state.match.pinnedId) {
+          document.getElementById('queueNotice').classList.remove('hidden');
+          document.getElementById('queueNoticeName').textContent = state.roster.find(r => r.id === state.match.pinnedId)?.name || '--';
+        } else {
+          document.getElementById('queueNotice').classList.add('hidden');
+        }
       }
 
       // Lists
@@ -2034,7 +2207,7 @@
         let classes = "player-card";
         if (isField && manualOutId === r.id) classes += " selected";
         if (!isField && manualInId === r.id) classes += " selected";
-        if (!isField && p.resting) classes += " resting";
+        if (!isField && (p.resting || p.fouledOut)) classes += " resting";
 
         const timeLabel = isField ? "Shift:" : "Sat:";
         const timeSpan = `<span class="font-mono-nums font-black text-sm" data-t="liveMs" data-id="${r.id}">00:00</span>`;
@@ -2044,11 +2217,21 @@
 
         let actionButtons = '';
         if (isField) {
-          actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" class="sun-btn bg-emerald-600" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.25rem;">⚽ Goal</button>`;
+          if (isBball) {
+            actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" data-points="1" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +1</button>`;
+            actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" data-points="2" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +2</button>`;
+            actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" data-points="3" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +3</button>`;
+          } else {
+            actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" data-points="1" class="sun-btn bg-emerald-600" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.25rem;">⚽ Goal</button>`;
+          }
+        }
+        if (isBball) {
+          actionButtons += `<button data-action="toggleFoulOutBtn" data-id="${r.id}" class="sun-btn bg-rose-100 text-rose-900" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">${!isField && p.fouledOut ? 'UNFOUL' : '🚫 Foul Out'}</button>`;
         }
         actionButtons += `<button data-action="toggleBadgeDrawer" data-id="${r.id}" class="sun-btn" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem;">+ 🌟 Badge</button>`;
 
-        const badgeCounts = { hustle: 0, save: 0, pass: 0, kick: 0, teammate: 0 };
+        const badgeCounts = {};
+        Object.keys(Engine.BADGE_MAP).forEach(k => { badgeCounts[k] = 0; });
         (p.badges || []).forEach(b => {
           if (badgeCounts[b.type] !== undefined) badgeCounts[b.type]++;
         });
@@ -2057,13 +2240,12 @@
           .map(([type, count]) => `<span class="badge-pill">${Engine.BADGE_MAP[type].icon} ${count}</span>`)
           .join(' ');
 
+        const drawerButtons = Object.entries(sportCfg.badges)
+          .map(([bKey, bMeta]) => `<button class="badge-btn" data-action="awardBadge" data-id="${r.id}" data-badge="${bKey}" title="${bMeta.title}">${bMeta.icon}</button>`)
+          .join('');
         const drawerHtml = activeBadgeDrawerPid === r.id ? `
            <div class="badge-strip" data-id="${r.id}">
-             <button class="badge-btn" data-action="awardBadge" data-id="${r.id}" data-badge="hustle" title="Great Hustle">⚡</button>
-             <button class="badge-btn" data-action="awardBadge" data-id="${r.id}" data-badge="save" title="Big Save">🛡️</button>
-             <button class="badge-btn" data-action="awardBadge" data-id="${r.id}" data-badge="pass" title="Great Pass">🤝</button>
-             <button class="badge-btn" data-action="awardBadge" data-id="${r.id}" data-badge="kick" title="Super Kick">🚀</button>
-             <button class="badge-btn" data-action="awardBadge" data-id="${r.id}" data-badge="teammate" title="Star Teammate">🌟</button>
+             ${drawerButtons}
            </div>
          ` : '';
 
@@ -2073,8 +2255,9 @@
                <div class="flex items-center gap-2 mb-1">
                  <span class="font-black text-lg">${r.name}</span>
                  ${!isField && p.resting ? '<span class="text-xs bg-slate-200 px-1 rounded font-bold">REST</span>' : ''}
+                 ${p.fouledOut ? '<span class="text-xs bg-rose-100 text-rose-900 border border-rose-300 px-1 rounded font-bold">FOULED OUT</span>' : ''}
                </div>
-               <div class="text-xs font-bold text-slate-700">Period: ${periodSpan} | Total: ${totalSpan}</div>
+               <div class="text-xs font-bold text-slate-700">${sportCfg.periodLabel}: ${periodSpan} | Total: ${totalSpan}</div>
                ${badgePills ? `<div class="card-badges mb-1">${badgePills}</div>` : ''}
                ${actionButtons}
                ${drawerHtml}
@@ -2116,6 +2299,7 @@
     function renderTimes() {
       const now = Date.now();
       const cMs = Engine.clockMs(state, now);
+      const sportCfg = Engine.getSportConfig(state);
 
       // We also check for period ending during ticking
       const pMs = state.settings.periodMinutes * 60 * 1000;
@@ -2126,20 +2310,23 @@
         dispatch('pause');
         if ('vibrate' in navigator) navigator.vibrate(isFinalPeriod ? [300, 100, 300] : 300);
         if (isFinalPeriod) {
-          showModal("🏆 Full Time — Match Complete!", `All ${state.settings.periodCount} periods are finished! Review player playing time, fairness gauge, and generate parent SMS recap.`, `
+          showModal(`🏆 ${sportCfg.gameOverLabel} — Match Complete!`, `All ${state.settings.periodCount} ${sportCfg.periodLabel.toLowerCase()}s are finished! Review player playing time, fairness gauge, and generate parent SMS recap.`, `
              <button class="sun-btn bg-emerald-600 text-white font-bold" data-action="openMatchLog">📊 View Match Report</button>
-             <button class="sun-btn" data-action="closeModal">Review Field</button>
+             <button class="sun-btn" data-action="closeModal">Review ${sportCfg.surfaceLabel}</button>
            `);
         }
         renderAll();
         return;
       }
 
+      updateMidSubBanner(now, false);
+
       document.getElementById('clockDisplay').textContent = fmt(cMs);
 
       document.querySelectorAll('[data-t]').forEach(el => {
         const type = el.getAttribute('data-t');
         const id = el.getAttribute('data-id');
+        if (!id || !state.match.players[id]) return;
         const t = Engine.times(state, id, now);
         if (type === 'recOutShift') el.textContent = fmt(t.shiftMs);
         else if (type === 'recInSat') el.textContent = fmt(t.satMs);
@@ -2170,9 +2357,14 @@
       else if (action === 'openSetup') openSetup();
       else if (action === 'closeSetup') closeSetup();
       else if (action === 'saveSetup') saveSetup();
+      else if (action === 'selectSport') {
+        const targetSport = btn.getAttribute('data-sport');
+        switchSport(targetSport);
+      }
       else if (action === 'toggleBadgeDrawer') {
         activeBadgeDrawerPid = activeBadgeDrawerPid === id ? null : id;
         renderAll();
+        e.stopPropagation();
       }
       else if (action === 'awardBadge') {
         const badgeType = btn.getAttribute('data-badge');
@@ -2182,6 +2374,7 @@
         manageWakeLock();
         renderAll();
         if ('vibrate' in navigator) navigator.vibrate(40);
+        e.stopPropagation();
       }
       else if (action === 'copyParentRecap') {
         const metrics = Engine.recapMetrics(state, Date.now());
@@ -2209,14 +2402,50 @@
         const rCard = document.getElementById('recommendCard');
         dispatch('substitute', rCard.dataset.outId, rCard.dataset.inId);
       }
+      else if (action === 'makeBatchSub') {
+        const rCard = document.getElementById('recommendCard');
+        const outIds = JSON.parse(rCard.dataset.batchOutIds || '[]');
+        const inIds = JSON.parse(rCard.dataset.batchInIds || '[]');
+        dispatch('substituteBatch', outIds, inIds);
+      }
+      else if (action === 'dismissMidSub') {
+        dispatch('dismissMidSub');
+      }
+      else if (action === 'toggleFoulOutBtn') {
+        e.stopPropagation();
+        const p = state.match.players[id];
+        if (p && p.onField) {
+          const rec = Engine.recommend(state, Date.now());
+          if (rec.inId) {
+            const rName = state.roster.find(r => r.id === id)?.name || 'Player';
+            const inName = state.roster.find(r => r.id === rec.inId)?.name || 'Bench Player';
+            showModal(`${rName} Fouled Out`, `Sub in ${inName} now?`, `
+              <button class="sun-btn bg-blue-700 text-white" data-action="confirmFoulOutSub" data-out-id="${id}" data-in-id="${rec.inId}">Swap & Mark Fouled Out</button>
+              <button class="sun-btn" data-action="closeModal">Cancel</button>
+            `);
+          } else {
+            dispatch('toggleFoulOut', id);
+          }
+        } else {
+          dispatch('toggleFoulOut', id);
+        }
+      }
+      else if (action === 'confirmFoulOutSub') {
+        const outId = btn.getAttribute('data-out-id');
+        const inId = btn.getAttribute('data-in-id');
+        closeModal();
+        dispatch('foulOutAndSub', outId, inId);
+      }
       else if (action === 'skipSub') dispatch('skip');
       else if (action === 'clearSkips') dispatch('clearSkips');
       else if (action === 'undo') dispatch('undo');
       else if (action === 'scoreThem') {
-        dispatch('recordGoal', 'them', null);
+        const pts = Number(btn.getAttribute('data-points')) || 1;
+        dispatch('recordScore', 'them', null, pts);
       }
       else if (action === 'scoreUsBtn') {
-        dispatch('recordGoal', 'us', id);
+        const pts = Number(btn.getAttribute('data-points')) || 1;
+        dispatch('recordScore', 'us', id, pts);
         e.stopPropagation();
       }
       else if (action === 'openMatchLog') {
@@ -2239,18 +2468,6 @@
         renderAll();
       }
       else if (action === 'tapBench') {
-        // Long press / click could be split, but for simplicity, 
-        // let's use a double-tap or separate button for rest? 
-        // Spec: "Bench players only. Resting a player also unpins them."
-        // In v2 we had a toggle Rest. We can add a Rest button or allow toggle on double click.
-        // Let's add a long press or click toggles selection, maybe long press toggles rest?
-        // Actually, let's keep it simple: if selected twice? No, let's add a "Toggle Rest" in a small action bar or on the bench tap logic.
-        // Let's add an explicit Rest button on the bench card. Wait, the spec says: "Tap to queue / manual sub".
-        // Let's make the card tap select for sub, and a long press for Rest, or we just add a "Rest" button in the bench card HTML.
-        // Let's just handle it via tapping. If it's selected, tapping again unselects.
-        // Where is toggleRest in UI? I'll add a 'rest' button inside the bench card.
-        // If click target is inside a 'rest' button, handle it.
-        // So for now, tap selects.
         if (manualInId === id) manualInId = null;
         else manualInId = id;
         renderAll();
@@ -2300,12 +2517,10 @@
       }
     });
 
-    // We missed injecting the "Rest" button into the bench card. Let's fix that.
-    // In `renderAll`, where we generate `benchHtml`, we can prepend a Rest button.
+    // Inject Rest buttons onto bench cards
     const origRenderAll = renderAll;
     renderAll = function () {
       origRenderAll();
-      // Inject Rest buttons
       const benchCards = document.getElementById('benchList').querySelectorAll('.player-card');
       benchCards.forEach(card => {
         const id = card.getAttribute('data-id');
