@@ -319,6 +319,55 @@ test('Engine Basketball Line Swap, Mid-Quarter Alert & Foul-Out', async (t) => {
     assert.strictEqual(state.match.players.p1.fouledOut, true);
     assert.strictEqual(state.match.players.p4.onField, true);
   });
+
+  await t.test('recapMetrics computes quarter-by-quarter boxScore, shotMix (1pt/2pt/3pt), headline, and impactAwards', () => {
+    let state = Engine.createState('basketball');
+    state.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    state.roster = [
+      { id: 'p1', name: 'Steph' },
+      { id: 'p2', name: 'Klay' },
+      { id: 'p3', name: 'Draymond' }
+    ];
+    state.starterIds = ['p1', 'p2'];
+    state = Engine.resetMatch(state, 0);
+
+    // Q1 scoring
+    state = Engine.recordScore(state, 'us', 'p1', 3, 60000);
+    state = Engine.recordScore(state, 'us', 'p1', 1, 90000);
+    state = Engine.recordScore(state, 'them', null, 2, 120000);
+
+    // Advance to Q4 and score comeback points
+    state.match.period = 4;
+    state = Engine.recordScore(state, 'us', 'p2', 2, 60000);
+    state = Engine.recordScore(state, 'us', 'p1', 3, 120000);
+
+    // Award badges
+    state = Engine.awardBadge(state, 'p3', 'rebound', 130000);
+    state = Engine.awardBadge(state, 'p3', 'rebound', 140000);
+    state = Engine.awardBadge(state, 'p2', 'defense', 150000);
+
+    const metrics = Engine.recapMetrics(state, 160000);
+
+    // Box score per quarter
+    assert.deepStrictEqual(metrics.boxScore.us, [4, 0, 0, 5]);
+    assert.deepStrictEqual(metrics.boxScore.them, [2, 0, 0, 0]);
+    assert.strictEqual(metrics.boxScore.totalUs, 9);
+    assert.strictEqual(metrics.boxScore.totalThem, 2);
+
+    // Team and player shot mix
+    assert.deepStrictEqual(metrics.teamShotMix, { pt1: 1, pt2: 1, pt3: 2 });
+    const steph = metrics.players.find(p => p.id === 'p1');
+    assert.strictEqual(steph.pointsScored, 7);
+    assert.deepStrictEqual(steph.shotMix, { pt1: 1, pt2: 0, pt3: 2 });
+
+    // Headline & Impact awards
+    assert.ok(typeof metrics.headline === 'string' && metrics.headline.length > 10);
+    assert.ok(Array.isArray(metrics.impactAwards) && metrics.impactAwards.length >= 2);
+    const glassAward = metrics.impactAwards.find(a => a.badgeType === 'rebound');
+    assert.ok(glassAward);
+    assert.strictEqual(glassAward.leaderName, 'Draymond');
+    assert.strictEqual(glassAward.count, 2);
+  });
 });
 
 

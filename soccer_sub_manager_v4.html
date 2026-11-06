@@ -730,6 +730,16 @@
 
     <div id="midSubBanner" class="sun-card hidden"></div>
 
+    <div class="mt-4 mb-4">
+      <div id="surfaceHeader" class="text-xs font-black mb-2"><span id="surfaceLabelText">On Field</span> (<span id="fieldCount">0</span>)</div>
+      <div id="fieldList" class="card-list"></div>
+    </div>
+
+    <div class="mt-4 mb-4">
+      <div class="text-xs font-black uppercase mb-2">Bench (<span id="benchCount">0</span>)</div>
+      <div id="benchList" class="card-list"></div>
+    </div>
+
     <div id="recommendCard" class="sun-card bg-cobalt-bg hidden">
       <div id="rollingRecView">
         <div class="text-xs font-black uppercase mb-4 text-blue-900">Recommended Sub</div>
@@ -764,16 +774,6 @@
 
     <div id="noneEligibleNotice" class="sun-card hidden text-center font-bold text-sm">
       All bench players are resting.
-    </div>
-
-    <div class="mt-4 mb-4">
-      <div id="surfaceHeader" class="text-xs font-black mb-2"><span id="surfaceLabelText">On Field</span> (<span id="fieldCount">0</span>)</div>
-      <div id="fieldList" class="card-list"></div>
-    </div>
-
-    <div class="mt-4 mb-4">
-      <div class="text-xs font-black uppercase mb-2">Bench (<span id="benchCount">0</span>)</div>
-      <div id="benchList" class="card-list"></div>
     </div>
 
     <div class="flex gap-2 mt-4 pt-4 border-t-2">
@@ -853,7 +853,7 @@
   <div id="matchLogModal" class="hidden"
     style="position: fixed; inset: 0; background: #f1f5f9; z-index: 60; overflow-y: auto; padding: 1rem;">
     <div class="max-w-md" style="margin: 0 auto;">
-      <div class="flex justify-between items-start mb-6 border-b-2 border-slate-300 pb-4 mt-2">
+      <div class="flex justify-between items-start mb-4 border-b-2 border-slate-300 pb-4 mt-2">
         <div>
           <h2 class="font-black text-3xl text-slate-900">Match Report</h2>
           <div id="logDateTime" class="text-sm font-bold text-slate-500 mt-1">Oct 3, 2026 10:00 AM</div>
@@ -863,14 +863,29 @@
         </div>
       </div>
 
-      <div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <h3 class="text-sm font-black uppercase text-slate-400 mb-3">Scoring Timeline</h3>
-        <div id="logTimeline" class="flex flex-wrap gap-2 text-sm font-bold"></div>
+      <div id="logHeadline" class="mb-4 px-4 py-3 rounded-xl font-black text-sm text-white bg-slate-900 shadow-sm"></div>
+
+      <div class="mb-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <h3 class="text-sm font-black uppercase text-slate-400 mb-3">Box Score</h3>
+        <div id="logBoxScore"></div>
       </div>
 
-      <div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <h3 class="text-sm font-black uppercase text-slate-400 mb-3">Top Scorers</h3>
-        <div id="logTopScorers" class="flex flex-wrap gap-2 text-base font-black"></div>
+      <div class="mb-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="text-sm font-black uppercase text-slate-400">Scoring Breakdown</h3>
+          <span id="logShotMixSummary" class="text-xs font-black text-slate-500"></span>
+        </div>
+        <div id="logTopScorers" class="flex flex-col gap-2 text-base font-black"></div>
+      </div>
+
+      <div class="mb-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <h3 class="text-sm font-black uppercase text-slate-400 mb-3">Hustle & Impact Awards</h3>
+        <div id="logImpactAwards" class="grid grid-cols-2 gap-2"></div>
+      </div>
+
+      <div class="mb-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <h3 class="text-sm font-black uppercase text-slate-400 mb-3">Scoring Timeline</h3>
+        <div id="logTimeline" class="flex flex-wrap gap-2 text-sm font-bold"></div>
       </div>
 
       <div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
@@ -1574,6 +1589,9 @@
         return newState;
       },
       recapMetrics: function (state, now) {
+        const sportCfg = this.getSportConfig(state);
+        const isBball = sportCfg.id === 'basketball';
+        const periodCount = state.settings.periodCount || 4;
         const activePlayers = state.roster.filter(r => state.match.players[r.id] && !state.match.players[r.id].resting && !state.match.players[r.id].fouledOut);
         const elapsedMs = state.match.clock.elapsedMs + (state.match.clock.running ? Math.max(0, now - state.match.clock.startedAt) : 0);
         const totalPeriodElapsedMs = (state.match.period - 1) * state.settings.periodMinutes * 60 * 1000 + elapsedMs;
@@ -1583,6 +1601,27 @@
 
         let totalBadges = 0;
         let maxPlayerMs = 0;
+
+        // Quarter-by-quarter box score
+        const usByPeriod = Array(periodCount).fill(0);
+        const themByPeriod = Array(periodCount).fill(0);
+        const teamShotMix = { pt1: 0, pt2: 0, pt3: 0 };
+
+        (state.match.events || []).forEach(evt => {
+          const pIdx = Math.min(periodCount - 1, Math.max(0, (evt.period || 1) - 1));
+          const pts = evt.points || 1;
+          if (evt.type === 'goal_us') {
+            usByPeriod[pIdx] += pts;
+            if (pts === 3) teamShotMix.pt3++;
+            else if (pts === 2) teamShotMix.pt2++;
+            else teamShotMix.pt1++;
+          } else if (evt.type === 'goal_them') {
+            themByPeriod[pIdx] += pts;
+          }
+        });
+
+        const totalUs = usByPeriod.reduce((a, b) => a + b, 0) || (state.match.score?.us || 0);
+        const totalThem = themByPeriod.reduce((a, b) => a + b, 0) || (state.match.score?.them || 0);
 
         const playerMetrics = state.roster.map(r => {
           const p = state.match.players[r.id] || { periodMs: [], badges: [] };
@@ -1596,9 +1635,17 @@
             totalBadges++;
           });
 
-          const pointsScored = (state.match.events || [])
-            .filter(evt => evt.type === 'goal_us' && evt.playerId === r.id)
-            .reduce((sum, evt) => sum + (evt.points || 1), 0);
+          const shotMix = { pt1: 0, pt2: 0, pt3: 0 };
+          let pointsScored = 0;
+          (state.match.events || []).forEach(evt => {
+            if (evt.type === 'goal_us' && evt.playerId === r.id) {
+              const pts = evt.points || 1;
+              pointsScored += pts;
+              if (pts === 3) shotMix.pt3++;
+              else if (pts === 2) shotMix.pt2++;
+              else shotMix.pt1++;
+            }
+          });
 
           const diff = totalMs - targetMs;
           let fairnessStatus = 'equal';
@@ -1613,15 +1660,81 @@
             fairnessStatus,
             fouledOut: Boolean(p.fouledOut),
             pointsScored,
+            shotMix,
             badgeCounts,
             badges: p.badges || []
           };
         });
 
+        // Build Hustle & Impact Awards
+        const AWARD_DEFS = [
+          { badgeType: 'rebound', icon: '🏀', awardTitle: 'Glass Cleaner', subtitle: 'Big Rebounds' },
+          { badgeType: 'defense', icon: '🛡️', awardTitle: 'Lockdown Defense', subtitle: 'Big Stops' },
+          { badgeType: 'save', icon: '🛡️', awardTitle: 'Brick Wall', subtitle: 'Big Saves' },
+          { badgeType: 'pass', icon: '🤝', awardTitle: 'Floor General', subtitle: 'Great Passes' },
+          { badgeType: 'shot', icon: '🎯', awardTitle: 'Sharpshooter', subtitle: 'Clutch Shots' },
+          { badgeType: 'kick', icon: '🚀', awardTitle: 'Big Boot', subtitle: 'Super Kicks' },
+          { badgeType: 'hustle', icon: '⚡', awardTitle: 'All-Out Hustle', subtitle: 'Hustle Plays' },
+          { badgeType: 'teammate', icon: '🌟', awardTitle: 'Ultimate Teammate', subtitle: 'Team Spirit' }
+        ];
+
+        const impactAwards = [];
+        AWARD_DEFS.forEach(def => {
+          let bestCount = 0;
+          let leaders = [];
+          playerMetrics.forEach(pm => {
+            const c = pm.badgeCounts[def.badgeType] || 0;
+            if (c > bestCount) {
+              bestCount = c;
+              leaders = [pm.name];
+            } else if (c > 0 && c === bestCount) {
+              leaders.push(pm.name);
+            }
+          });
+          if (bestCount > 0) {
+            impactAwards.push({
+              badgeType: def.badgeType,
+              icon: def.icon,
+              awardTitle: def.awardTitle,
+              subtitle: def.subtitle,
+              leaderName: leaders.join(', '),
+              count: bestCount
+            });
+          }
+        });
+
+        // Generate Game Story Headline
+        const scorerCount = playerMetrics.filter(p => p.pointsScored > 0).length;
+        const lastIdx = periodCount - 1;
+        const q4Diff = (usByPeriod[lastIdx] || 0) - (themByPeriod[lastIdx] || 0);
+        let headline = '';
+        if (totalUs === 0 && totalThem === 0 && totalBadges === 0) {
+          headline = `${sportCfg.icon} Game Recap Ready • Track points & sportsmanship badges live!`;
+        } else if (totalUs > totalThem && q4Diff >= 4) {
+          headline = `🔥 Strong ${sportCfg.periodShort}${periodCount} Finish! Outscored opponent ${usByPeriod[lastIdx]}–${themByPeriod[lastIdx]} in final ${sportCfg.periodLabel.toLowerCase()} • ${scorerCount} scorers & ${totalBadges} badges!`;
+        } else if (totalUs > totalThem && scorerCount >= 3) {
+          headline = `⚡ Balanced Team Win! ${scorerCount} different players scored & ${totalBadges} hustle badges earned!`;
+        } else if (totalUs > totalThem) {
+          headline = `🏆 Victory (${totalUs}–${totalThem})! ${scorerCount} player${scorerCount === 1 ? '' : 's'} scored & ${totalBadges} sportsmanship badges earned!`;
+        } else if (totalUs === totalThem && totalUs > 0) {
+          headline = `🤝 Thriller Tie (${totalUs}–${totalThem})! ${scorerCount} scorers & ${totalBadges} sportsmanship badges earned!`;
+        } else {
+          headline = `💪 Great Team Effort! ${scorerCount} scorer${scorerCount === 1 ? '' : 's'} & ${totalBadges} sportsmanship badges earned with equal play time!`;
+        }
+
         return {
           targetMs,
           totalBadges,
           maxPlayerMs: Math.max(maxPlayerMs, targetMs, 60000),
+          boxScore: {
+            us: usByPeriod,
+            them: themByPeriod,
+            totalUs,
+            totalThem
+          },
+          teamShotMix,
+          headline,
+          impactAwards,
           players: playerMetrics
         };
       }
@@ -1865,10 +1978,112 @@
       const sportCfg = Engine.getSportConfig(state);
       const isBball = sportCfg.id === 'basketball';
       const pShort = sportCfg.periodShort;
+      const now = Date.now();
+      const metrics = Engine.recapMetrics(state, now);
+
       const dateOpts = { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
       document.getElementById('logDateTime').textContent = new Date().toLocaleDateString('en-US', dateOpts);
       document.getElementById('logScore').textContent = `${state.match.score.us} - ${state.match.score.them}`;
 
+      // 1. Headline Banner
+      const headlineEl = document.getElementById('logHeadline');
+      if (headlineEl) {
+        headlineEl.textContent = metrics.headline;
+      }
+
+      // 2. Quarter-by-Quarter Box Score Table
+      const boxScoreEl = document.getElementById('logBoxScore');
+      if (boxScoreEl && metrics.boxScore) {
+        const periodHeaders = metrics.boxScore.us.map((_, i) => `<th style="padding:6px 8px; text-align:center; color:#64748b;">${pShort}${i + 1}</th>`).join('');
+        const usCells = metrics.boxScore.us.map(v => `<td class="font-mono-nums" style="padding:6px 8px; text-align:center; font-weight:800;">${v}</td>`).join('');
+        const themCells = metrics.boxScore.them.map(v => `<td class="font-mono-nums" style="padding:6px 8px; text-align:center; font-weight:700; color:#64748b;">${v}</td>`).join('');
+        boxScoreEl.innerHTML = `
+          <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead>
+              <tr style="border-bottom:2px solid #e2e8f0;">
+                <th style="padding:6px 8px; text-align:left; color:#64748b;">TEAM</th>
+                ${periodHeaders}
+                <th style="padding:6px 8px; text-align:right; color:#0f172a;">TOT</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid #f1f5f9; background:#f8fafc;">
+                <td style="padding:8px; font-weight:900; color:#0f172a;">${sportCfg.icon} Us</td>
+                ${usCells}
+                <td class="font-mono-nums" style="padding:8px; text-align:right; font-weight:900; font-size:15px; color:#059669;">${state.match.score.us}</td>
+              </tr>
+              <tr>
+                <td style="padding:8px; font-weight:800; color:#64748b;">Them</td>
+                ${themCells}
+                <td class="font-mono-nums" style="padding:8px; text-align:right; font-weight:900; font-size:15px; color:#b91c1c;">${state.match.score.them}</td>
+              </tr>
+            </tbody>
+          </table>
+        `;
+      }
+
+      // 3. Scoring Breakdown (1PT / 2PT / 3PT Mix & Top Scorers)
+      const shotMixSummaryEl = document.getElementById('logShotMixSummary');
+      if (shotMixSummaryEl) {
+        if (isBball && (metrics.teamShotMix.pt3 > 0 || metrics.teamShotMix.pt2 > 0 || metrics.teamShotMix.pt1 > 0)) {
+          shotMixSummaryEl.textContent = `3PT: ${metrics.teamShotMix.pt3} • 2PT: ${metrics.teamShotMix.pt2} • FT: ${metrics.teamShotMix.pt1}`;
+        } else {
+          shotMixSummaryEl.textContent = '';
+        }
+      }
+
+      const scorersEl = document.getElementById('logTopScorers');
+      const scorers = metrics.players.filter(p => p.pointsScored > 0).sort((a, b) => b.pointsScored - a.pointsScored);
+      if (scorers.length === 0) {
+        scorersEl.innerHTML = '<span class="text-slate-400 text-sm">None yet</span>';
+      } else {
+        const topPts = Math.max(...scorers.map(s => s.pointsScored), 1);
+        scorersEl.innerHTML = scorers.map(p => {
+          if (!isBball) {
+            return `<div class="bg-slate-100 border border-slate-300 px-3 py-2 rounded-lg flex justify-between items-center">
+              <span>${p.name}</span>
+              <span>${'⚽'.repeat(p.pointsScored)} (${p.pointsScored})</span>
+            </div>`;
+          }
+          const pills = [];
+          if (p.shotMix.pt3 > 0) pills.push(`<span style="background:#dbeafe; color:#1d4ed8; padding:2px 6px; border-radius:6px; font-size:11px; font-weight:800;">${p.shotMix.pt3}×3PT</span>`);
+          if (p.shotMix.pt2 > 0) pills.push(`<span style="background:#dcfce7; color:#15803d; padding:2px 6px; border-radius:6px; font-size:11px; font-weight:800;">${p.shotMix.pt2}×2PT</span>`);
+          if (p.shotMix.pt1 > 0) pills.push(`<span style="background:#fef3c7; color:#b45309; padding:2px 6px; border-radius:6px; font-size:11px; font-weight:800;">${p.shotMix.pt1}×1PT</span>`);
+          const barPct = Math.min(100, Math.max(12, Math.round((p.pointsScored / topPts) * 100)));
+          return `
+            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:8px 10px;">
+              <div class="flex justify-between items-center mb-1">
+                <span class="font-black text-sm text-slate-900">${p.name}</span>
+                <div class="flex items-center gap-1">
+                  ${pills.join('')}
+                  <span class="font-mono-nums font-black text-sm" style="background:#0f172a; color:white; padding:2px 8px; border-radius:6px; margin-left:4px;">🏀 ${p.pointsScored} pts</span>
+                </div>
+              </div>
+              <div style="background:#e2e8f0; height:6px; border-radius:3px; overflow:hidden;">
+                <div style="background:#2563eb; width:${barPct}%; height:100%; border-radius:3px;"></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // 4. Hustle & Impact Awards Trophy Case
+      const awardsEl = document.getElementById('logImpactAwards');
+      if (awardsEl) {
+        if (!metrics.impactAwards || metrics.impactAwards.length === 0) {
+          awardsEl.innerHTML = '<div class="text-slate-400 text-sm font-bold" style="grid-column: span 2;">Award badges during the game to unlock locker room trophies!</div>';
+        } else {
+          awardsEl.innerHTML = metrics.impactAwards.map(a => `
+            <div style="background:#fefce8; border:2px solid #facc15; border-radius:10px; padding:8px 10px; display:flex; flex-direction:column; justify-content:space-between;">
+              <div style="font-size:11px; font-weight:900; text-transform:uppercase; color:#854d0e;">${a.icon} ${a.awardTitle}</div>
+              <div style="font-size:15px; font-weight:900; color:#0f172a; margin-top:2px;">${a.leaderName}</div>
+              <div style="font-size:11px; font-weight:700; color:#a16207; margin-top:2px;">${a.count}× ${Engine.BADGE_MAP[a.badgeType]?.title || a.subtitle}</div>
+            </div>
+          `).join('');
+        }
+      }
+
+      // 5. Scoring Timeline
       const timelineEl = document.getElementById('logTimeline');
       if (!state.match.events || state.match.events.length === 0) {
         timelineEl.innerHTML = `<span class="text-slate-400">No ${isBball ? 'points' : 'goals'} recorded</span>`;
@@ -1901,29 +2116,8 @@
         }).join('');
       }
 
-      const scorersEl = document.getElementById('logTopScorers');
-      let scorerTotals = {};
-      (state.match.events || []).forEach(evt => {
-        if (evt.type === 'goal_us' && evt.playerId) {
-          scorerTotals[evt.playerId] = (scorerTotals[evt.playerId] || 0) + (isBball ? (evt.points || 1) : 1);
-        }
-      });
-      const topIds = Object.keys(scorerTotals).sort((a, b) => scorerTotals[b] - scorerTotals[a]);
-      if (topIds.length === 0) {
-        scorersEl.innerHTML = '<span class="text-slate-400">None yet</span>';
-      } else {
-        scorersEl.innerHTML = topIds.map(id => {
-          const name = state.roster.find(r => r.id === id)?.name || 'Unknown';
-          const summary = isBball
-            ? `${name} 🏀 ${scorerTotals[id]} pts`
-            : `${name} ${'⚽'.repeat(scorerTotals[id])}`;
-          return `<span class="bg-slate-100 border border-slate-300 px-2 py-1 rounded">${summary}</span>`;
-        }).join('');
-      }
-
+      // 6. Playtime Summary (Unchanged per user request)
       const playtimeEl = document.getElementById('logPlaytime');
-      const now = Date.now();
-      const metrics = Engine.recapMetrics(state, now);
       const maxMs = metrics.maxPlayerMs || 1;
       const targetPct = Math.min(100, Math.max(0, Math.round((metrics.targetMs / maxMs) * 100)));
 

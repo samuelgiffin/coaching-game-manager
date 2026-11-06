@@ -188,6 +188,14 @@ const assert = require('node:assert');
     // ----------------------------------------------------
     // TEST 8: Basketball Line Swap, 3:30 Warning & 4:00 Mid-Quarter Alert
     // ----------------------------------------------------
+    // Verify Recommended Sub card is positioned BELOW Bench list in the layout
+    const isRecBelowBench = await page.evaluate(() => {
+      const benchRect = document.getElementById('benchList').getBoundingClientRect();
+      const recRect = document.getElementById('recommendCard').getBoundingClientRect();
+      return recRect.top >= benchRect.bottom;
+    });
+    assert.strictEqual(isRecBelowBench, true, 'Recommended Sub card must be positioned below the Bench list');
+
     const recCardText = await page.innerText('#recommendCard');
     assert.ok(recCardText.includes('Recommended Line Sub (2 ⇄ 2)'), `Should show Recommended Line Sub (2 ⇄ 2), got "${recCardText}"`);
     assert.ok(recCardText.includes('Poole') && recCardText.includes('GP2'), 'Line sub should recommend Poole and GP2 in');
@@ -252,7 +260,14 @@ const assert = require('node:assert');
     assert.ok(timelineText.includes('Them 🏀 +2'), `Timeline should show Them 🏀 +2, got "${timelineText}"`);
 
     const topScorersText = await page.innerText('#logTopScorers');
-    assert.ok(topScorersText.includes('🏀 5 pts'), `Top scorers should show 🏀 5 pts, got "${topScorersText}"`);
+    assert.ok(topScorersText.includes('5 PTS') || topScorersText.includes('5 pts'), `Top scorers should show 5 PTS, got "${topScorersText}"`);
+    assert.ok(topScorersText.includes('1×3PT') && topScorersText.includes('1×2PT'), `Top scorers should show shot mix breakdown (1×3PT, 1×2PT), got "${topScorersText}"`);
+
+    const boxScoreText = await page.innerText('#logBoxScore');
+    assert.ok(boxScoreText.includes('Q1') && boxScoreText.includes('5') && boxScoreText.includes('2'), `Box score should display quarter-by-quarter points, got "${boxScoreText}"`);
+
+    const awardsText = await page.innerText('#logImpactAwards');
+    assert.ok(awardsText.includes('Glass Cleaner') || awardsText.includes('Big Rebound'), `Impact awards should display rebound award, got "${awardsText}"`);
 
     const bballParentText = await page.evaluate(() => {
       const metrics = Engine.recapMetrics(state, Date.now());
