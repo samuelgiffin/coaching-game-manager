@@ -306,7 +306,30 @@ const assert = require('node:assert');
     assert.ok(playtimeText.includes(`${fouledOutPlayerName} (Fouled Out)`), `Playtime summary should label "${fouledOutPlayerName} (Fouled Out)"`);
     testPass('Basketball On-Court Foul-Out Prompt & 1-Tap Bench Replacement');
 
-    console.log('\n✨ ALL 10 PLAYWRIGHT E2E TESTS PASSED SUCCESSFULLY! ✨');
+    // ----------------------------------------------------
+    // TEST 11: Real-World Clock/Sub/Reset Edge Cases in Browser
+    // ----------------------------------------------------
+    await page.click('button[data-action="closeMatchLog"]');
+    await page.waitForFunction(() => document.getElementById('matchLogModal').classList.contains('hidden'));
+
+    // 11a: Select a player for manual swap (tap name on card), then execute Make Line Sub -> manual swap bar must auto-clear
+    await page.click('#fieldList .player-card:first-child .font-black.text-lg');
+    assert.strictEqual(await page.isVisible('#manualSwapBar:not(.hidden)'), true, 'Manual swap bar should open when tapping a court player');
+    await page.click('button[data-action="makeBatchSub"]');
+    assert.strictEqual(await page.isVisible('#manualSwapBar:not(.hidden)'), false, 'Manual swap bar must clear when Make Line Sub is executed');
+
+    // 11b: Live fairness badges on player cards must show non-zero +/- values after play time
+    const fairnessBadges = await page.$$eval('#fieldList .fairness-badge, #benchList .fairness-badge', els => els.map(e => e.textContent.trim()));
+    assert.ok(fairnessBadges.some(txt => txt !== '0:00'), `Fairness badges should show live +/- deltas, got ${JSON.stringify(fairnessBadges)}`);
+
+    // 11c: Reset Match clears score (0 - 0), events, and badges
+    await page.click('button[data-action="resetMatchConfirm"]');
+    await page.click('#modalButtons button[data-action="resetMatch"]');
+    assert.strictEqual(await page.innerText('#scoreUs'), '0', 'Score Us must reset to 0 on Reset Match');
+    assert.strictEqual(await page.innerText('#scoreThem'), '0', 'Score Them must reset to 0 on Reset Match');
+    testPass('Real-World Edge Cases: Manual Swap Auto-Clear, Live Fairness Deltas & Full Match Reset');
+
+    console.log('\n✨ ALL 11 PLAYWRIGHT E2E TESTS PASSED SUCCESSFULLY! ✨');
 
   } catch (err) {
     console.error('\n❌ E2E TEST FAILED:', err);

@@ -1010,6 +1010,8 @@
             s.starterIds = s.roster.slice(0, s.settings.fieldSize).map(r => r.id);
           }
           state = this.resetMatch(s, 0);
+          if (raw.match && raw.match.score) state.match.score = JSON.parse(JSON.stringify(raw.match.score));
+          if (raw.match && raw.match.events) state.match.events = JSON.parse(JSON.stringify(raw.match.events));
         }
         state.v = 4;
         state.sport = sport;
@@ -1042,17 +1044,42 @@
         }
         return Math.min(periodMs, state.match.clock.elapsedMs + runningMs);
       },
+      _rawTimes: function (state, id, cMs) {
+        const p = state.match.players[id];
+        if (!p) return { periodMs: 0, totalMs: 0, shiftMs: 0, satMs: 0 };
+        const shiftMs = p.onField ? cMs - p.stintStartMs : 0;
+        const satMs = p.onField ? 0 : cMs - p.stintStartMs;
+        const periodMs = (p.periodMs[state.match.period - 1] || 0) + shiftMs;
+        const totalMs = p.periodMs.reduce((a, b) => a + b, 0) + shiftMs;
+        return { periodMs, totalMs, shiftMs, satMs };
+      },
       times: function (state, id, now) {
         const p = state.match.players[id];
         if (!p) return { periodMs: 0, totalMs: 0, shiftMs: 0, satMs: 0, fairDeltaMs: 0 };
         const cMs = this.clockMs(state, now);
+        const own = this._rawTimes(state, id, cMs);
 
-        let shiftMs = p.onField ? cMs - p.stintStartMs : 0;
-        let satMs = p.onField ? 0 : cMs - p.stintStartMs;
-        let periodMs = (p.periodMs[state.match.period - 1] || 0) + shiftMs;
-        let totalMs = p.periodMs.reduce((a, b) => a + b, 0) + shiftMs;
+        let sumTotal = 0;
+        let count = 0;
+        if (Array.isArray(state.roster)) {
+          for (let i = 0; i < state.roster.length; i++) {
+            const rId = state.roster[i].id;
+            const rp = state.match.players[rId];
+            if (!rp || rp.resting || rp.fouledOut) continue;
+            sumTotal += this._rawTimes(state, rId, cMs).totalMs;
+            count++;
+          }
+        }
+        const avgTotal = count > 0 ? sumTotal / count : own.totalMs;
+        const fairDeltaMs = own.totalMs - avgTotal;
 
-        return { periodMs, totalMs, shiftMs, satMs, fairDeltaMs: 0 };
+        return {
+          periodMs: own.periodMs,
+          totalMs: own.totalMs,
+          shiftMs: own.shiftMs,
+          satMs: own.satMs,
+          fairDeltaMs
+        };
       },
       start: function (state, now) {
         const newState = JSON.parse(JSON.stringify(state));
@@ -1286,7 +1313,9 @@
         newState.match.lastSubOutId = outIds[outIds.length - 1] || null;
 
         const cfg = this.getSportConfig(newState);
-        const midWarnMs = (newState.settings.periodMinutes * 60 * 1000) / 2 - (cfg.midSubWarningLeadMs || 30000);
+        const periodMs = newState.settings.periodMinutes * 60 * 1000;
+        const midMs = periodMs / 2;
+        const midWarnMs = Math.max(Math.min(midMs, 10000), midMs - (cfg.midSubWarningLeadMs || 30000));
         if (cMs >= midWarnMs) {
           newState.match.midSubDoneForPeriod = newState.match.period;
         }
@@ -1298,7 +1327,7 @@
         if (cfg.subMode !== 'batch') return 'none';
         const periodMs = state.settings.periodMinutes * 60 * 1000;
         const midMs = periodMs / 2;
-        const warnMs = Math.max(0, midMs - (cfg.midSubWarningLeadMs || 30000));
+        const warnMs = Math.max(Math.min(midMs, 10000), midMs - (cfg.midSubWarningLeadMs || 30000));
         const cMs = this.clockMs(state, now);
 
         if (state.match.midSubDoneForPeriod === state.match.period || cMs >= periodMs) {
@@ -1316,16 +1345,26 @@
       toggleFoulOut: function (state, playerId, now) {
         const p = state.match.players[playerId];
         if (!p) return state;
-        const newState = JSON.parse(JSON.stringify(state));
+        let newState = JSON.parse(JSON.stringify(state));
         const r = state.roster.find(x => x.id === playerId);
+        const wasOnField = Boolean(p.onField);
+        if (wasOnField) {
+          newState = this.pause(newState, now);
+        }
+        const cMs = this.clockMs(newState, now);
         const target = newState.match.players[playerId];
         target.fouledOut = !target.fouledOut;
+        if (target.fouledOut && wasOnField) {
+          target.periodMs[newState.match.period - 1] = (target.periodMs[newState.match.period - 1] || 0) + (cMs - target.stintStartMs);
+          target.onField = false;
+          target.stintStartMs = cMs;
+        }
         if (target.fouledOut && newState.match.pinnedId === playerId) {
           newState.match.pinnedId = null;
         }
         newState.match.undo = {
           label: `${r ? r.name : 'Player'} ${target.fouledOut ? 'Fouled Out' : 'Cleared Foul Out'}`,
-          keepClock: true,
+          keepClock: !wasOnField,
           match: JSON.parse(JSON.stringify(state.match))
         };
         return newState;
@@ -1427,18 +1466,17 @@
         newState.match.pinnedId = null;
         newState.match.lastSubOutId = null;
         newState.match.midSubDoneForPeriod = 0;
-        if (!newState.match.score) newState.match.score = { us: 0, them: 0 };
-        if (!newState.match.events) newState.match.events = [];
+        newState.match.score = { us: 0, them: 0 };
+        newState.match.events = [];
         for (let r of newState.roster) {
           const onField = newState.starterIds.includes(r.id);
-          const existing = state.match && state.match.players && state.match.players[r.id];
           newState.match.players[r.id] = {
             onField,
             stintStartMs: 0,
             periodMs: Array(newState.settings.periodCount).fill(0),
             resting: false,
             fouledOut: false,
-            badges: existing && Array.isArray(existing.badges) ? existing.badges : []
+            badges: []
           };
         }
         return newState;
@@ -1483,10 +1521,18 @@
       undo: function (state, now) {
         if (!state.match.undo) return state;
         let newState = JSON.parse(JSON.stringify(state));
+        const currentElapsedMs = this.clockMs(state, now);
+        const isCurrentlyRunning = Boolean(state.match.clock.running);
         const oldMatch = newState.match.undo.match;
         const keepClock = newState.match.undo.keepClock;
         newState.match = oldMatch;
-        if (keepClock) newState.match.clock = JSON.parse(JSON.stringify(state.match.clock));
+        if (keepClock) {
+          newState.match.clock = {
+            running: isCurrentlyRunning,
+            startedAt: isCurrentlyRunning ? now : null,
+            elapsedMs: currentElapsedMs
+          };
+        }
         return newState;
       },
       applySetup: function (state, draft, now) {
@@ -1593,7 +1639,7 @@
         const isBball = sportCfg.id === 'basketball';
         const periodCount = state.settings.periodCount || 4;
         const activePlayers = state.roster.filter(r => state.match.players[r.id] && !state.match.players[r.id].resting && !state.match.players[r.id].fouledOut);
-        const elapsedMs = state.match.clock.elapsedMs + (state.match.clock.running ? Math.max(0, now - state.match.clock.startedAt) : 0);
+        const elapsedMs = this.clockMs(state, now);
         const totalPeriodElapsedMs = (state.match.period - 1) * state.settings.periodMinutes * 60 * 1000 + elapsedMs;
 
         const totalFieldMs = totalPeriodElapsedMs * state.settings.fieldSize;
@@ -1839,6 +1885,10 @@
     document.addEventListener('visibilitychange', manageWakeLock);
 
     function dispatch(actionName, ...args) {
+      if (['substitute', 'substituteBatch', 'foulOutAndSub', 'toggleFoulOut', 'advancePeriod', 'resetMatch', 'undo'].includes(actionName)) {
+        manualOutId = null;
+        manualInId = null;
+      }
       state = Engine[actionName](state, ...args, Date.now());
       save();
       manageWakeLock();
@@ -2518,6 +2568,30 @@
       }
 
       updateMidSubBanner(now, false);
+
+      // Check if recommended sub candidate(s) changed while clock is ticking
+      const recCard = document.getElementById('recommendCard');
+      if (recCard && !recCard.classList.contains('hidden')) {
+        if (sportCfg.subMode === 'batch') {
+          const batch = Engine.recommendBatch(state, now);
+          if (batch.status === 'ok') {
+            const curOut = recCard.dataset.batchOutIds || '[]';
+            const curIn = recCard.dataset.batchInIds || '[]';
+            const nextOut = JSON.stringify(batch.outIds);
+            const nextIn = JSON.stringify(batch.inIds);
+            if (curOut !== nextOut || curIn !== nextIn) {
+              renderAll();
+              return;
+            }
+          }
+        } else {
+          const rec = Engine.recommend(state, now);
+          if (rec.status === 'ok' && (recCard.dataset.outId !== rec.outId || recCard.dataset.inId !== rec.inId)) {
+            renderAll();
+            return;
+          }
+        }
+      }
 
       document.getElementById('clockDisplay').textContent = fmt(cMs);
 

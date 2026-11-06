@@ -370,5 +370,107 @@ test('Engine Basketball Line Swap, Mid-Quarter Alert & Foul-Out', async (t) => {
   });
 });
 
+test('Real-World Simulation & Edge-Case Regression Suite', async (t) => {
+  await t.test('1. undo() after a substitution while clock is running preserves exact elapsed clock without double-counting time', () => {
+    let s = Engine.createState('basketball');
+    s.roster = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'].map(id => ({ id, name: id.toUpperCase() }));
+    s.starterIds = ['p1', 'p2', 'p3', 'p4', 'p5'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+
+    // At 2:00 (120,000 ms), sub p1 -> p6 while clock is running
+    s = Engine.substitute(s, 'p1', 'p6', 120000);
+    // At 2:05 (125,000 ms), undo the sub while clock is still running!
+    s = Engine.undo(s, 125000);
+
+    // And 5 seconds later at 2:10 (130,000 ms), clock must be 130,000 ms (NOT 120,000 + 130,000 = 250,000 ms!)
+    assert.strictEqual(Engine.clockMs(s, 130000), 130000, 'Clock must not double-count elapsed time before the sub');
+    assert.strictEqual(Engine.times(s, 'p1', 130000).totalMs, 130000);
+    assert.strictEqual(Engine.times(s, 'p3', 130000).totalMs, 130000);
+  });
+
+  await t.test('2. substituteBatch at 0:00 (start of quarter) does not prematurely mark midSubDoneForPeriod even for 1-min periods', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 2, periodMinutes: 1, periodCount: 4 };
+    s.roster = ['p1', 'p2', 'p3', 'p4'].map(id => ({ id, name: id.toUpperCase() }));
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+
+    // Sub at 0:00 before starting clock
+    s = Engine.substituteBatch(s, ['p1', 'p2'], ['p3', 'p4'], 0);
+    assert.strictEqual(s.match.midSubDoneForPeriod, 0, 'Line sub at 0:00 must not mark mid-quarter sub done');
+    s = Engine.start(s, 0);
+    assert.strictEqual(Engine.midQuarterSubStatus(s, 30000), 'due', 'At 0:30 midpoint of 1-min period, mid-quarter sub should be due');
+  });
+
+  await t.test('3. resetMatch clears score, scoring events, and player badges for a fresh game (and supports undo)', () => {
+    let s = Engine.createState('basketball');
+    s.roster = ['p1', 'p2'].map(id => ({ id, name: id.toUpperCase() }));
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+    s = Engine.recordScore(s, 'us', 'p1', 3, 30000);
+    s = Engine.recordScore(s, 'them', null, 2, 40000);
+    s = Engine.awardBadge(s, 'p1', 'rebound', 50000);
+
+    // Reset match for new game
+    const resetS = Engine.resetMatch(s, 60000);
+    assert.deepStrictEqual(resetS.match.score, { us: 0, them: 0 });
+    assert.strictEqual(resetS.match.events.length, 0);
+    assert.strictEqual(resetS.match.players.p1.badges.length, 0);
+
+    // Undoing resetMatch restores the previous game's score, events, and badges
+    const undone = Engine.undo(resetS, 65000);
+    assert.deepStrictEqual(undone.match.score, { us: 3, them: 2 });
+    assert.strictEqual(undone.match.events.length, 2);
+    assert.strictEqual(undone.match.players.p1.badges.length, 1);
+  });
+
+  await t.test('4. times() computes live fairDeltaMs relative to active players average playtime', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = ['p1', 'p2', 'p3'].map(id => ({ id, name: id.toUpperCase() }));
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+
+    // At 3:00 (180,000 ms): p1=180k, p2=180k, p3=0. Average = 360k / 3 = 120k.
+    // p1 fairDeltaMs should be +60,000 ms; p3 fairDeltaMs should be -120,000 ms.
+    const t1 = Engine.times(s, 'p1', 180000);
+    const t3 = Engine.times(s, 'p3', 180000);
+    assert.strictEqual(t1.fairDeltaMs, 60000);
+    assert.strictEqual(t3.fairDeltaMs, -120000);
+  });
+
+  await t.test('5. toggleFoulOut on an active on-court player banks their shift time and moves them off the court', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = ['p1', 'p2'].map(id => ({ id, name: id.toUpperCase() }));
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+
+    // At 2:00 (120,000 ms), p1 fouls out with no eligible bench replacement (or Mark Fouled Out Only)
+    s = Engine.toggleFoulOut(s, 'p1', 120000);
+    assert.strictEqual(s.match.players.p1.fouledOut, true);
+    assert.strictEqual(s.match.players.p1.onField, false, 'Fouled-out player must be moved off the court');
+    assert.strictEqual(s.match.players.p1.periodMs[0], 120000, 'Fouled-out player shift time must be banked');
+    assert.strictEqual(s.match.clock.running, false, 'Clock should pause when an active player fouls out');
+  });
+
+  await t.test('6. recapMetrics caps current period elapsedMs at periodMinutes via clockMs()', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 5, periodMinutes: 8, periodCount: 4 };
+    s.roster = ['p1', 'p2', 'p3', 'p4', 'p5'].map(id => ({ id, name: id.toUpperCase() }));
+    s.starterIds = ['p1', 'p2', 'p3', 'p4', 'p5'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+
+    // 10 minutes wall-clock pass in an 8-minute (480,000 ms) quarter before pause
+    const metrics = Engine.recapMetrics(s, 600000);
+    assert.strictEqual(metrics.targetMs, 480000, 'targetMs must cap at period length (480,000 ms), not 600,000 ms');
+  });
+});
+
 
 
