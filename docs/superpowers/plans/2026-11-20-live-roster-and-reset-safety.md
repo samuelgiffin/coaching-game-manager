@@ -6,7 +6,7 @@
 
 **Architecture:** All pure state transitions and fairness math live in the embedded `Engine` module inside `soccer_sub_manager_v4.html`, keeping every operation deterministic and unit-testable via `node --test`. The UI separates everyday live roster actions (`👥 Roster` modal + inline `Not Here Yet` strip + open-slot `+ Field`/`+ Court` buttons) from match configuration and destructive resets (`⚙️ Setup` + Danger Zone), using safe `document.createElement` / `textContent` DOM manipulation (no `innerHTML` with user-controlled strings, no native `confirm()`/`alert()`).
 
-**Tech Stack:** Single-file vanilla HTML/CSS/JS (`soccer_sub_manager_v4.html`), Node.js native test runner (`/home/samue/.nvm/versions/node/v24.14.1/bin/node --test`), Playwright E2E (`playwright_v4.test.js`).
+**Tech Stack:** Single-file vanilla HTML/CSS/JS (`index.html`), Node.js native test runner (`node --test`), Playwright E2E (`playwright_v4.test.js`).
 
 **Spec:** `docs/superpowers/specs/2026-11-19-live-roster-and-reset-safety-design.md`
 
@@ -18,7 +18,7 @@
 - Missing players use a two-tier model: game-day **Absent / Not Here Yet / Left Early** toggle (preserves team roster week to week) + permanent **Remove from Team** (blocked when player has logged playtime, goals/points, or badges in the current match).
 - Security (from `mandatory-secure-web-skills`): All new/refactored UI rendering MUST build DOM nodes using `document.createElement`, `textContent`, `setAttribute`, and `replaceChildren()` — NEVER inject user-controlled strings (such as player names) via `innerHTML`. NEVER use native `alert()`, `confirm()`, or `prompt()`.
 - Preserve backward compatibility with existing v3/v4 `localStorage` data and existing passing tests in `v4_engine.test.js` and `playwright_v4.test.js` (keeping Starter/Bench button as the first `<button>` in `#draftRosterList .player-card`).
-- Node binary path in this environment: `export PATH="/home/samue/.nvm/versions/node/v24.14.1/bin:$PATH"`.
+- Ensure `node` (v20+) is on your `PATH`.
 
 ---
 
@@ -144,7 +144,7 @@ test('Live Roster Schema, Presence Helpers & Roster-Aware Undo', async (t) => {
 
 - [ ] **Step 2: Run unit tests to verify they fail**
 
-Run: `export PATH="/home/samue/.nvm/versions/node/v24.14.1/bin:$PATH" && node --test v4_engine.test.js`
+Run: `node --test v4_engine.test.js`
 Expected: FAIL (missing `surfaceNoun`, `completedPeriodsMs`, `hasMatchActivity`, `matchElapsedMs`, `playerPresentMs`, roster restore in `undo`).
 
 - [ ] **Step 3: Implement schema additions, helpers, and roster-aware Undo in `soccer_sub_manager_v4.html`**
@@ -221,7 +221,7 @@ Expected: FAIL (missing `surfaceNoun`, `completedPeriodsMs`, `hasMatchActivity`,
 
 - [ ] **Step 4: Run unit tests to verify all tests pass**
 
-Run: `export PATH="/home/samue/.nvm/versions/node/v24.14.1/bin:$PATH" && node --test v4_engine.test.js`
+Run: `node --test v4_engine.test.js`
 Expected: ALL PASS (including all 28 baseline tests + 5 new tests).
 
 - [ ] **Step 5: Commit**
@@ -349,7 +349,7 @@ test('Pure Prorated Fairness & Late-Arrival Recommendation Ranking (Soccer + Bas
 
 - [ ] **Step 2: Run unit tests to verify they fail**
 
-Run: `export PATH="/home/samue/.nvm/versions/node/v24.14.1/bin:$PATH" && node --test v4_engine.test.js`
+Run: `node --test v4_engine.test.js`
 Expected: FAIL (`fairDeltaMs` not prorated, `recommend` and `recommendBatch` pick `p4` ahead of `p3` and include absent players).
 
 - [ ] **Step 3: Implement prorated `times()`, `recommend()`, and `recommendBatch()` in `soccer_sub_manager_v4.html`**
@@ -434,7 +434,7 @@ Expected: FAIL (`fairDeltaMs` not prorated, `recommend` and `recommendBatch` pic
 
 - [ ] **Step 4: Run unit tests to verify all pass**
 
-Run: `export PATH="/home/samue/.nvm/versions/node/v24.14.1/bin:$PATH" && node --test v4_engine.test.js`
+Run: `node --test v4_engine.test.js`
 Expected: ALL PASS.
 
 - [ ] **Step 5: Commit**
@@ -628,7 +628,7 @@ test('Safe Live Roster Actions & Non-Destructive Setup', async (t) => {
 
 - [ ] **Step 2: Run unit tests to verify they fail**
 
-Run: `export PATH="/home/samue/.nvm/versions/node/v24.14.1/bin:$PATH" && node --test v4_engine.test.js`
+Run: `node --test v4_engine.test.js`
 Expected: FAIL (`addPlayerLive`, `markPlayerArrived`, `markPlayerAbsent`, `enterField`, `removePlayerFromRoster` not defined; `applySetup` fails starter check).
 
 - [ ] **Step 3: Implement the 5 safe Engine actions and non-destructive `applySetup` in `soccer_sub_manager_v4.html`**
@@ -936,7 +936,7 @@ applySetup: function (state, draft, now) {
 
 - [ ] **Step 4: Run unit tests to verify all pass**
 
-Run: `export PATH="/home/samue/.nvm/versions/node/v24.14.1/bin:$PATH" && node --test v4_engine.test.js`
+Run: `node --test v4_engine.test.js`
 Expected: ALL PASS.
 
 - [ ] **Step 5: Commit**
@@ -1010,7 +1010,7 @@ test('Match Report Prorated Targets & Absentee Handling', async (t) => {
 
 - [ ] **Step 2: Run unit tests to verify it fails**
 
-Run: `export PATH="/home/samue/.nvm/versions/node/v24.14.1/bin:$PATH" && node --test v4_engine.test.js`
+Run: `node --test v4_engine.test.js`
 Expected: FAIL (`m3.targetMs` undefined, `m4.absentAllGame` undefined).
 
 - [ ] **Step 3: Update `Engine.recapMetrics` in `soccer_sub_manager_v4.html`**
@@ -1050,7 +1050,7 @@ In `Engine.recapMetrics`:
 
 - [ ] **Step 4: Run unit tests to verify all pass**
 
-Run: `export PATH="/home/samue/.nvm/versions/node/v24.14.1/bin:$PATH" && node --test v4_engine.test.js`
+Run: `node --test v4_engine.test.js`
 Expected: ALL PASS.
 
 - [ ] **Step 5: Commit**
@@ -1232,7 +1232,7 @@ Add right after `.bg-slate-900` / `#setupModal`:
 
 - [ ] **Step 4: Run unit tests and existing Playwright suite to verify zero regressions**
 
-Run: `export PATH="/home/samue/.nvm/versions/node/v24.14.1/bin:$PATH" && node --test v4_engine.test.js`
+Run: `node --test v4_engine.test.js`
 Expected: ALL PASS.
 
 - [ ] **Step 5: Commit**
@@ -1321,7 +1321,7 @@ git commit -m "feat(ui): add live Roster & Attendance modal, inline Not Here Yet
 
 - [ ] **Step 3: Run unit tests to verify all pass**
 
-Run: `export PATH="/home/samue/.nvm/versions/node/v24.14.1/bin:$PATH" && node --test v4_engine.test.js`
+Run: `node --test v4_engine.test.js`
 Expected: ALL PASS.
 
 - [ ] **Step 4: Commit**
@@ -1367,7 +1367,6 @@ git commit -m "feat(ui): isolate Reset Match in Setup Danger Zone and guard live
 
 Run:
 ```bash
-export PATH="/home/samue/.nvm/versions/node/v24.14.1/bin:$PATH"
 node --test v4_engine.test.js && node playwright_v4.test.js
 ```
 Expected: ALL unit tests PASS and ALL Playwright E2E tests (1–14) PASS with zero console/page errors!

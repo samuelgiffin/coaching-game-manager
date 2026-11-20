@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#ffffff">
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
-  <title>Soccer Sub Manager v3</title>
+  <title>Coaching Game Manager</title>
   <style>
     :root {
       --pitch-green: #15803d;
@@ -4027,7 +4027,7 @@
         const blob = new Blob([APP_HTML], { type: "text/html" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = "soccer_sub_manager_v4.html";
+        a.download = "coaching_game_manager.html";
         a.click();
       }
       else if (action === 'reload') window.location.reload();
@@ -4043,7 +4043,14 @@
       }
       else if (action === 'confirmResetApp') {
         closeModal();
-        localStorage.clear();
+        try {
+          const appKeys = [
+            'CGM_ACTIVE_SPORT',
+            'SOCCER_SUB_TRACKER_SUNLIGHT_V1',
+            ...Object.values(Engine.SPORTS).flatMap(cfg => [cfg.storageKey, `${cfg.storageKey}_corrupt`])
+          ];
+          appKeys.forEach(k => localStorage.removeItem(k));
+        } catch (e) { }
         window.location.reload();
       }
     });

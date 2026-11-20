@@ -4,7 +4,7 @@ const path = require('path');
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  const filePath = 'file://' + path.resolve(__dirname, 'soccer_sub_manager_v4.html');
+  const filePath = 'file://' + path.resolve(__dirname, 'index.html');
   
   console.log(`Loading ${filePath}...`);
   await page.goto(filePath);

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vanilla HTML5, Vanilla JavaScript (ES2022), Pure Vanilla CSS, Node `node:test` + `node:vm` for zero-dependency headless unit tests.
 
-**Spec:** [docs/specs/v4-recap-badges-fairness.md](file:///home/samue/projects/coaching-game-manager/docs/specs/v4-recap-badges-fairness.md)
+**Spec:** [docs/specs/v4-recap-badges-fairness.md](v4-recap-badges-fairness.md)
 
 ## Global Constraints
 

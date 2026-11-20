@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-const html = fs.readFileSync('./soccer_sub_manager_v4.html', 'utf8');
+const html = fs.readFileSync('./index.html', 'utf8');
 const scriptMatch = html.match(/<script id="engine">([\s\S]*?)<\/script>/);
 if (!scriptMatch) throw new Error("Could not find engine script");
 

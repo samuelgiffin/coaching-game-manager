@@ -7,7 +7,7 @@ const assert = require('node:assert');
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  const filePath = 'file://' + path.resolve(__dirname, 'soccer_sub_manager_v4.html');
+  const filePath = 'file://' + path.resolve(__dirname, 'index.html');
   const pageErrors = [];
   const consoleErrors = [];
   page.on('pageerror', (err) => pageErrors.push(err.message || String(err)));
