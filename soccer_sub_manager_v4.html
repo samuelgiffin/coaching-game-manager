@@ -918,6 +918,7 @@
           storageKey: 'SSM_V3',
           appTitle: 'Soccer Sub Manager',
           surfaceLabel: 'On Field',
+          surfaceNoun: 'Field',
           sizeLabel: 'Field Size',
           periodLabel: 'Period',
           periodShort: 'P',
@@ -941,6 +942,7 @@
           storageKey: 'CGM_BASKETBALL_V1',
           appTitle: 'Basketball Sub Manager',
           surfaceLabel: 'On Court',
+          surfaceNoun: 'Court',
           sizeLabel: 'Court Size',
           periodLabel: 'Quarter',
           periodShort: 'Q',
@@ -975,6 +977,7 @@
           match: {
             period: 1,
             clock: { running: false, startedAt: null, elapsedMs: 0 },
+            completedPeriodsMs: 0,
             players: {},
             pinnedId: null,
             skipIds: [],
@@ -1022,13 +1025,23 @@
         state.sport = sport;
         if (state.match && state.match.players) {
           for (const pid in state.match.players) {
-            if (!Array.isArray(state.match.players[pid].badges)) {
-              state.match.players[pid].badges = [];
+            const p = state.match.players[pid];
+            if (!Array.isArray(p.badges)) {
+              p.badges = [];
             }
-            state.match.players[pid].fouledOut = Boolean(state.match.players[pid].fouledOut);
+            p.fouledOut = Boolean(p.fouledOut);
+            p.absent = Boolean(p.absent);
+            if (p.arrivedAtMs === undefined) p.arrivedAtMs = p.absent ? null : 0;
+            if (p.firstArrivedAtMs === undefined) p.firstArrivedAtMs = p.absent ? null : p.arrivedAtMs;
+            if (p.departedAtMs === undefined) p.departedAtMs = null;
+            if (typeof p.presentMs !== 'number') p.presentMs = 0;
           }
         }
         if (state.match) {
+          if (typeof state.match.completedPeriodsMs !== 'number') {
+            const periodMins = (state.settings && state.settings.periodMinutes) || 8;
+            state.match.completedPeriodsMs = (Math.max(1, state.match.period || 1) - 1) * periodMins * 60 * 1000;
+          }
           if (state.match.lastSubOutId === undefined) {
             state.match.lastSubOutId = null;
           }
@@ -1048,6 +1061,51 @@
           runningMs = Math.max(0, now - state.match.clock.startedAt);
         }
         return Math.min(periodMs, state.match.clock.elapsedMs + runningMs);
+      },
+      hasMatchActivity: function (state) {
+        if (!state || !state.match) return false;
+        const m = state.match;
+        if (m.period > 1) return true;
+        if (m.clock && (m.clock.elapsedMs > 0 || m.clock.running)) return true;
+        if (m.score && (m.score.us > 0 || m.score.them > 0)) return true;
+        if (Array.isArray(m.events) && m.events.length > 0) return true;
+        if (m.players) {
+          for (const pid in m.players) {
+            const p = m.players[pid];
+            if (!p) continue;
+            if (Array.isArray(p.badges) && p.badges.length > 0) return true;
+            if (Array.isArray(p.periodMs) && p.periodMs.some(ms => ms > 0)) return true;
+          }
+        }
+        return false;
+      },
+      isMatchComplete: function (state, now) {
+        if (!state || !state.match || !state.settings) return false;
+        const pMs = state.settings.periodMinutes * 60 * 1000;
+        return state.match.period >= state.settings.periodCount && this.clockMs(state, now) >= pMs;
+      },
+      matchElapsedMs: function (state, now) {
+        const completed = typeof state.match.completedPeriodsMs === 'number'
+          ? state.match.completedPeriodsMs
+          : (Math.max(1, state.match.period || 1) - 1) * state.settings.periodMinutes * 60 * 1000;
+        return completed + this.clockMs(state, now);
+      },
+      playerPresentMs: function (state, id, now) {
+        const p = state.match.players[id];
+        if (!p) return 0;
+        const mMs = this.matchElapsedMs(state, now);
+        const arrivedAt = p.arrivedAtMs === undefined ? (p.absent ? null : 0) : p.arrivedAtMs;
+        const activeStint = (!p.absent && arrivedAt !== null) ? Math.max(0, mMs - arrivedAt) : 0;
+        return (p.presentMs || 0) + activeStint;
+      },
+      playerHasMatchData: function (state, id, now) {
+        const p = state.match.players[id];
+        if (!p) return false;
+        const cMs = this.clockMs(state, now);
+        if (this._rawTimes(state, id, cMs).totalMs > 0) return true;
+        if (Array.isArray(p.badges) && p.badges.length > 0) return true;
+        if (Array.isArray(state.match.events) && state.match.events.some(e => e.playerId === id)) return true;
+        return false;
       },
       _rawTimes: function (state, id, cMs) {
         const p = state.match.players[id];
@@ -1452,6 +1510,9 @@
           }
           p.stintStartMs = 0;
         }
+        newState.match.completedPeriodsMs = (typeof newState.match.completedPeriodsMs === 'number'
+          ? newState.match.completedPeriodsMs
+          : (Math.max(1, newState.match.period - 1) * newState.settings.periodMinutes * 60 * 1000)) + cMs;
         newState.match.period++;
         newState.match.clock.elapsedMs = 0;
         newState.match.skipIds = [];
@@ -1467,12 +1528,14 @@
         };
         newState.match.period = 1;
         newState.match.clock.elapsedMs = 0;
+        newState.match.completedPeriodsMs = 0;
         newState.match.skipIds = [];
         newState.match.pinnedId = null;
         newState.match.lastSubOutId = null;
         newState.match.midSubDoneForPeriod = 0;
         newState.match.score = { us: 0, them: 0 };
         newState.match.events = [];
+        newState.match.players = {};
         for (let r of newState.roster) {
           const onField = newState.starterIds.includes(r.id);
           newState.match.players[r.id] = {
@@ -1481,6 +1544,11 @@
             periodMs: Array(newState.settings.periodCount).fill(0),
             resting: false,
             fouledOut: false,
+            absent: false,
+            arrivedAtMs: 0,
+            firstArrivedAtMs: 0,
+            departedAtMs: null,
+            presentMs: 0,
             badges: []
           };
         }
@@ -1528,8 +1596,11 @@
         let newState = JSON.parse(JSON.stringify(state));
         const currentElapsedMs = this.clockMs(state, now);
         const isCurrentlyRunning = Boolean(state.match.clock.running);
-        const oldMatch = newState.match.undo.match;
-        const keepClock = newState.match.undo.keepClock;
+        const undoData = newState.match.undo;
+        const oldMatch = undoData.match;
+        const keepClock = undoData.keepClock;
+        if (Array.isArray(undoData.roster)) newState.roster = undoData.roster;
+        if (Array.isArray(undoData.starterIds)) newState.starterIds = undoData.starterIds;
         newState.match = oldMatch;
         if (keepClock) {
           newState.match.clock = {

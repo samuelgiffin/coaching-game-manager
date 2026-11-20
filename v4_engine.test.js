@@ -501,5 +501,124 @@ test('Real-World Simulation & Edge-Case Regression Suite', async (t) => {
   });
 });
 
+test('Live Roster Schema, Presence Helpers & Roster-Aware Undo', async (t) => {
+  await t.test('SPORTS defines surfaceNoun for soccer (Field) and basketball (Court)', () => {
+    assert.strictEqual(Engine.SPORTS.soccer.surfaceNoun, 'Field');
+    assert.strictEqual(Engine.SPORTS.basketball.surfaceNoun, 'Court');
+  });
+
+  await t.test('normalize backfills attendance fields and completedPeriodsMs on legacy saves', () => {
+    const legacy = {
+      v: 4,
+      sport: 'soccer',
+      settings: { fieldSize: 5, periodMinutes: 8, periodCount: 4 },
+      roster: [{ id: 'p1', name: 'Mason' }],
+      starterIds: ['p1'],
+      match: {
+        period: 2,
+        clock: { running: false, startedAt: null, elapsedMs: 60000 },
+        players: {
+          p1: { onField: true, stintStartMs: 0, periodMs: [480000, 0, 0, 0], resting: false, badges: [] }
+        }
+      }
+    };
+    const s = Engine.normalize(legacy);
+    assert.strictEqual(s.match.completedPeriodsMs, 480000);
+    assert.strictEqual(s.match.players.p1.absent, false);
+    assert.strictEqual(s.match.players.p1.arrivedAtMs, 0);
+    assert.strictEqual(s.match.players.p1.firstArrivedAtMs, 0);
+    assert.strictEqual(s.match.players.p1.departedAtMs, null);
+    assert.strictEqual(s.match.players.p1.presentMs, 0);
+  });
+
+  await t.test('advancePeriod accumulates exact completedPeriodsMs even when advancing early', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+    // Advance period early at 5:00 (300,000 ms instead of 480,000 ms)
+    s = Engine.advancePeriod(s, 300000);
+    assert.strictEqual(s.match.period, 2);
+    assert.strictEqual(s.match.completedPeriodsMs, 300000);
+    assert.strictEqual(Engine.matchElapsedMs(s, 300000), 300000);
+    assert.strictEqual(Engine.playerPresentMs(s, 'p1', 300000), 300000);
+  });
+
+  await t.test('hasMatchActivity detects clock, period, score, events, badges, and played time', () => {
+    let s = Engine.createState('soccer');
+    s.roster = [{ id: 'p1', name: 'A' }];
+    s.starterIds = ['p1'];
+    s = Engine.resetMatch(s, 0);
+    assert.strictEqual(Engine.hasMatchActivity(s), false);
+
+    const withGoal = Engine.recordScore(s, 'us', 'p1', 1, 0);
+    assert.strictEqual(Engine.hasMatchActivity(withGoal), true);
+
+    const withBadge = Engine.awardBadge(s, 'p1', 'hustle', 0);
+    assert.strictEqual(Engine.hasMatchActivity(withBadge), true);
+
+    const withClock = Engine.start(s, 1000);
+    assert.strictEqual(Engine.hasMatchActivity(withClock), true);
+  });
+
+  await t.test('undo restores optional roster and starterIds while keeping clock running', () => {
+    let s = Engine.createState('soccer');
+    s.roster = [{ id: 'p1', name: 'A' }];
+    s.starterIds = ['p1'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+    const snapRoster = JSON.parse(JSON.stringify(s.roster));
+    const snapStarters = JSON.parse(JSON.stringify(s.starterIds));
+    const snapMatch = JSON.parse(JSON.stringify(s.match));
+
+    s.roster.push({ id: 'p2', name: 'Late' });
+    s.starterIds.push('p2');
+    s.match.undo = { label: 'Added Late', keepClock: true, roster: snapRoster, starterIds: snapStarters, match: snapMatch };
+
+    const undone = Engine.undo(s, 30000);
+    assert.strictEqual(undone.roster.length, 1);
+    assert.deepStrictEqual(undone.starterIds, ['p1']);
+    assert.strictEqual(undone.match.clock.running, true);
+    assert.strictEqual(Engine.clockMs(undone, 30000), 30000);
+  });
+
+  await t.test('isMatchComplete, playerHasMatchData, and resetMatch attendance/pruning', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }, { id: 'p3', name: 'C' }];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+
+    // resetMatch initializes attendance fields
+    assert.strictEqual(s.match.completedPeriodsMs, 0);
+    assert.strictEqual(s.match.players.p1.absent, false);
+    assert.strictEqual(s.match.players.p1.arrivedAtMs, 0);
+    assert.strictEqual(s.match.players.p1.firstArrivedAtMs, 0);
+    assert.strictEqual(s.match.players.p1.departedAtMs, null);
+    assert.strictEqual(s.match.players.p1.presentMs, 0);
+
+    // playerHasMatchData detects played time, badges, and events
+    assert.strictEqual(Engine.playerHasMatchData(s, 'p3', 0), false);
+    s = Engine.start(s, 0);
+    assert.strictEqual(Engine.playerHasMatchData(s, 'p1', 10000), true);
+    assert.strictEqual(Engine.playerHasMatchData(s, 'p3', 10000), false);
+
+    // isMatchComplete requires final period and full period clock
+    assert.strictEqual(Engine.isMatchComplete(s, 480000), false);
+    s.match.period = 4;
+    s.match.clock = { running: false, startedAt: null, elapsedMs: 479999 };
+    assert.strictEqual(Engine.isMatchComplete(s, 479999), false);
+    s.match.clock.elapsedMs = 480000;
+    assert.strictEqual(Engine.isMatchComplete(s, 480000), true);
+
+    // resetMatch prunes removed players from match.players
+    s.roster = [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }];
+    const reset = Engine.resetMatch(s, 500000);
+    assert.strictEqual(reset.match.players.p3, undefined);
+  });
+});
+
 
 
