@@ -8,6 +8,12 @@ const assert = require('node:assert');
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const filePath = 'file://' + path.resolve(__dirname, 'soccer_sub_manager_v4.html');
+  const pageErrors = [];
+  const consoleErrors = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message || String(err)));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
 
   // Helper to log test pass
   const testPass = (name) => console.log(`  ✔ PASS: ${name}`);
@@ -255,13 +261,32 @@ const assert = require('node:assert');
     await page.click('button[data-action="openMatchLog"]');
     await page.waitForFunction(() => !document.getElementById('matchLogModal').classList.contains('hidden'));
 
+    // Verify Player Box Score table shows all 7 players, quarter columns, shot mix, and fits cleanly in 390px width
+    const topScorersText = await page.innerText('#logTopScorers');
+    for (const pName of bballNames) {
+      assert.ok(topScorersText.includes(pName), `Player Box Score should include ${pName}, got "${topScorersText}"`);
+    }
+    assert.ok(topScorersText.includes('Q1') && topScorersText.includes('Q4') && topScorersText.includes('PTS'), `Player Box Score should show Q1..Q4 and PTS columns, got "${topScorersText}"`);
+    assert.ok(topScorersText.includes('5 PTS'), `Player Box Score should show 5 PTS, got "${topScorersText}"`);
+    assert.ok(topScorersText.includes('1×3PT') && topScorersText.includes('1×2PT'), `Player Box Score should show shot mix breakdown (1×3PT, 1×2PT), got "${topScorersText}"`);
+
+    const boxScoreOverflow = await page.evaluate(() => {
+      const wrap = document.querySelector('#logTopScorers > div');
+      return wrap ? wrap.scrollWidth > wrap.clientWidth : false;
+    });
+    assert.strictEqual(boxScoreOverflow, false, 'Player Box Score table should fit without horizontal overflow on 390px viewport');
+
+    // Verify Play-by-Play drawer starts collapsed by default for clean screenshots
+    const pbpInitiallyVisible = await page.isVisible('#logTimeline');
+    assert.strictEqual(pbpInitiallyVisible, false, 'Scoring Play-by-Play drawer should start collapsed by default');
+
+    // Expand Play-by-Play drawer and verify Q1 events and running score
+    await page.click('button[data-action="togglePlayByPlay"]');
+    await page.waitForFunction(() => !document.getElementById('logTimeline').classList.contains('hidden'));
     const timelineText = await page.innerText('#logTimeline');
     assert.ok(timelineText.includes('Q1') && timelineText.includes('🏀 +3') && timelineText.includes('🏀 +2'), `Timeline should show Q1 and +3/+2 points, got "${timelineText}"`);
     assert.ok(timelineText.includes('Them 🏀 +2'), `Timeline should show Them 🏀 +2, got "${timelineText}"`);
-
-    const topScorersText = await page.innerText('#logTopScorers');
-    assert.ok(topScorersText.includes('5 PTS') || topScorersText.includes('5 pts'), `Top scorers should show 5 PTS, got "${topScorersText}"`);
-    assert.ok(topScorersText.includes('1×3PT') && topScorersText.includes('1×2PT'), `Top scorers should show shot mix breakdown (1×3PT, 1×2PT), got "${topScorersText}"`);
+    assert.ok(timelineText.includes('5 - 2'), `Timeline should show running score 5 - 2, got "${timelineText}"`);
 
     const boxScoreText = await page.innerText('#logBoxScore');
     assert.ok(boxScoreText.includes('Q1') && boxScoreText.includes('5') && boxScoreText.includes('2'), `Box score should display quarter-by-quarter points, got "${boxScoreText}"`);
@@ -322,14 +347,344 @@ const assert = require('node:assert');
     const fairnessBadges = await page.$$eval('#fieldList .fairness-badge, #benchList .fairness-badge', els => els.map(e => e.textContent.trim()));
     assert.ok(fairnessBadges.some(txt => txt !== '0:00'), `Fairness badges should show live +/- deltas, got ${JSON.stringify(fairnessBadges)}`);
 
-    // 11c: Reset Match clears score (0 - 0), events, and badges
-    await page.click('button[data-action="resetMatchConfirm"]');
+    // 11c: Bare Reset must NOT be in main footer; Reset Match lives in Setup Danger Zone
+    assert.strictEqual(
+      await page.locator('main button[data-action="resetMatchConfirm"]').count(),
+      0,
+      'Bare Reset button must not be in main dashboard footer'
+    );
+    await page.click('button[data-action="openSetup"]');
+    await page.waitForFunction(() => !document.getElementById('setupModal').classList.contains('hidden'));
+    await page.click('#setupDangerZone button[data-action="resetMatchConfirm"]');
+    await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('hidden'));
     await page.click('#modalButtons button[data-action="resetMatch"]');
+    await page.waitForFunction(() =>
+      document.getElementById('setupModal').classList.contains('hidden') &&
+      document.getElementById('modalOverlay').classList.contains('hidden')
+    );
     assert.strictEqual(await page.innerText('#scoreUs'), '0', 'Score Us must reset to 0 on Reset Match');
     assert.strictEqual(await page.innerText('#scoreThem'), '0', 'Score Them must reset to 0 on Reset Match');
-    testPass('Real-World Edge Cases: Manual Swap Auto-Clear, Live Fairness Deltas & Full Match Reset');
+    assert.strictEqual(await page.locator('#fieldList .badge-pill, #benchList .badge-pill').count(), 0, 'Badges must clear on Reset Match');
+    assert.strictEqual(await page.evaluate(() => state.match.events.length), 0, 'Events must clear on Reset Match');
+    testPass('Real-World Edge Cases: Manual Swap Auto-Clear, Live Fairness Deltas & Setup Danger Zone Reset');
 
-    console.log('\n✨ ALL 11 PLAYWRIGHT E2E TESTS PASSED SUCCESSFULLY! ✨');
+    // ----------------------------------------------------
+    // TEST 12: Soccer Shorthanded Start, Live Late Arrival to Open Field Slot, Inline Not Here Yet Check-In, Left Early Swap & Undo
+    // ----------------------------------------------------
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForFunction(() => !document.getElementById('setupModal').classList.contains('hidden'));
+
+    const t12Players = ['Alex', 'Sam', 'Jordan', 'Taylor', 'AbsentKid'];
+    for (const name of t12Players) {
+      await page.fill('#draftPlayerName', name);
+      await page.click('button[data-action="draftAddPlayer"]');
+    }
+    for (let i = 1; i <= 4; i++) {
+      await page.click(`#draftRosterList .player-card:nth-child(${i}) button[data-action="draftToggleStarter"]`);
+    }
+    await page.click('#draftRosterList .player-card:nth-child(5) button[data-action="draftToggleAbsent"]');
+    assert.strictEqual(await page.innerText('#draftStarterCount'), '4', 'Starter count should be 4');
+    assert.strictEqual(await page.innerText('#draftTargetStarters'), '4', 'Target starters should pass at 4/4 with 1 absent');
+
+    await page.click('button[data-action="saveSetup"]');
+    await page.waitForFunction(() => document.getElementById('setupModal').classList.contains('hidden'));
+
+    await page.click('#clockBtn');
+    assert.strictEqual(await page.innerText('#clockBtn'), 'PAUSE', 'Clock should be running');
+    await page.click('#fieldList .player-card:first-child button[data-action="scoreUsBtn"]');
+    assert.strictEqual(await page.innerText('#scoreUs'), '1', 'Us score should be 1');
+    await page.waitForTimeout(1100);
+
+    assert.strictEqual(await page.innerText('#fieldCount'), '4/5', 'Field count should be 4/5 on shorthanded start');
+    assert.strictEqual(await page.isVisible('#notHereSection:not(.hidden)'), true, '#notHereSection should be visible');
+    assert.strictEqual(await page.innerText('#notHereToggleLabel'), 'Not Here Yet (1)', 'Toggle should show Not Here Yet (1)');
+
+    await page.click('button[data-action="openRoster"]');
+    await page.waitForFunction(() => !document.getElementById('rosterModal').classList.contains('hidden'));
+    assert.strictEqual(await page.isVisible('#liveAddFieldBtn:not(.hidden)'), true, '+ Add to Field button should be visible');
+    assert.strictEqual(await page.innerText('#liveAddFieldBtn'), '+ Add to Field', 'Soccer open-slot add button should say + Add to Field');
+    await page.fill('#livePlayerName', 'LateSam');
+    await page.click('button[data-action="liveAddField"]');
+    assert.strictEqual(await page.innerText('#fieldCount'), '5/5', 'Field count should become 5/5 after liveAddField');
+    assert.strictEqual(await page.innerText('#scoreUs'), '1', 'Score Us must stay 1 after liveAddField');
+    assert.strictEqual(await page.innerText('#clockBtn'), 'PAUSE', 'Clock must stay running (PAUSE) after liveAddField');
+    assert.strictEqual(await page.isVisible('#liveAddFieldBtn:not(.hidden)'), false, '+ Add to Field must hide when field is full');
+
+    await page.click('button[data-action="closeRoster"]');
+    await page.waitForFunction(() => document.getElementById('rosterModal').classList.contains('hidden'));
+
+    await page.click('#notHereToggleBtn');
+    await page.waitForFunction(() => !document.getElementById('notHereList').classList.contains('hidden'));
+    assert.strictEqual(await page.innerText('#benchCount'), '0', 'Bench count should be 0 before check-in');
+    await page.click('#notHereList button[data-action="quickArrivedBench"]');
+    assert.strictEqual(await page.innerText('#benchCount'), '1', 'Bench count should increment to 1 after check-in');
+    assert.strictEqual(await page.isVisible('#notHereSection'), false, '#notHereSection should hide when nobody is absent');
+    assert.strictEqual(await page.isVisible('#undoBar:not(.hidden)'), true, 'Undo bar should be visible');
+    assert.ok((await page.innerText('#undoLabel')).includes('AbsentKid Arrived'), 'Undo bar should show AbsentKid Arrived');
+
+    // Undo arrival while clock continues running, then check AbsentKid back in
+    await page.click('#undoBar[data-action="undo"]');
+    assert.strictEqual(await page.innerText('#benchCount'), '0', 'Undo should revert AbsentKid back out of bench');
+    assert.strictEqual(await page.isVisible('#notHereSection:not(.hidden)'), true, 'Undo should restore Not Here Yet section');
+    assert.strictEqual(await page.innerText('#clockBtn'), 'PAUSE', 'Clock must stay running across arrival undo');
+    await page.click('#notHereToggleBtn');
+    await page.waitForFunction(() => !document.getElementById('notHereList').classList.contains('hidden'));
+    await page.click('#notHereList button[data-action="quickArrivedBench"]');
+    assert.strictEqual(await page.innerText('#benchCount'), '1', 'Bench count should return to 1 on re-arrival');
+
+    // Mark an on-field player Left Early with Swap replacement
+    await page.click('button[data-action="openRoster"]');
+    await page.waitForFunction(() => !document.getElementById('rosterModal').classList.contains('hidden'));
+    await page.click('#rosterPresentList .player-card:first-child button[data-action="rosterMarkAbsent"]');
+    await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('hidden'));
+    assert.strictEqual(await page.isVisible('#modalButtons button[data-action="confirmAbsentSwap"]'), true, 'Left Early modal must offer Swap');
+    assert.strictEqual(await page.isVisible('#modalButtons button[data-action="confirmAbsentLeaveOpen"]'), true, 'Left Early modal must offer Leave Open');
+    await page.click('#modalButtons button[data-action="confirmAbsentSwap"]');
+    await page.waitForFunction(() => document.getElementById('modalOverlay').classList.contains('hidden'));
+
+    assert.strictEqual(await page.innerText('#fieldCount'), '5/5', 'Field count should remain 5/5 after Left Early swap');
+    assert.strictEqual(await page.innerText('#scoreUs'), '1', 'Score Us should remain 1 after Left Early swap');
+    assert.strictEqual(await page.isVisible('#rosterAbsentSection:not(.hidden)'), true, 'Absent section in Roster should be visible');
+    const absentText = await page.innerText('#rosterAbsentList');
+    assert.ok(absentText.includes('Alex') && absentText.includes('Left Early'), `Alex should move to Absent section with Left Early badge, got "${absentText}"`);
+
+    // Clicking trash on a player with playtime shows stat-preservation modal instead of deleting them
+    await page.click('#rosterAbsentList .player-card:first-child button[data-action="rosterRemoveBtn"]');
+    await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('hidden'));
+    const statModalTitle = await page.innerText('#modalTitle');
+    assert.ok(statModalTitle.includes('Match Stats Preserved'), `Should show stat-preservation modal, got "${statModalTitle}"`);
+    await page.click('#modalButtons button[data-action="closeModal"]');
+    await page.waitForFunction(() => document.getElementById('modalOverlay').classList.contains('hidden'));
+    assert.ok((await page.innerText('#rosterAbsentList')).includes('Alex'), 'Alex must remain in roster after stat-preservation modal');
+    await page.click('button[data-action="closeRoster"]');
+    await page.waitForFunction(() => document.getElementById('rosterModal').classList.contains('hidden'));
+    testPass('Soccer Shorthanded Start, Live Late Arrival, Inline Check-In, Left Early Swap & Undo');
+
+    // ----------------------------------------------------
+    // TEST 13: Basketball Live Roster Parity (Court labels, + Court open-slot entry, prorated batch line sub & foul-out exclusion)
+    // ----------------------------------------------------
+    await page.click('button[data-action="openSetup"]');
+    await page.waitForFunction(() => !document.getElementById('setupModal').classList.contains('hidden'));
+    await page.click('button[data-action="selectSport"][data-sport="basketball"]');
+    await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('hidden'));
+    const switchTitle = await page.innerText('#modalTitle');
+    assert.ok(switchTitle.includes('Switch to 🏀 Basketball?'), `Sport-switch confirmation modal should show, got "${switchTitle}"`);
+    await page.click('#modalButtons button[data-action="confirmSwitchSport"]');
+    await page.waitForFunction(() => document.getElementById('modalOverlay').classList.contains('hidden'));
+
+    const soccerRunningAfterSwitch = await page.evaluate(() => JSON.parse(localStorage.getItem('SSM_V3')).match.clock.running);
+    assert.strictEqual(soccerRunningAfterSwitch, false, 'Live Soccer clock must be paused when switching to Basketball');
+
+    const t13Players = ['Curry', 'Klay', 'Green', 'Wiggins', 'Looney', 'LateBaller'];
+    for (const name of t13Players) {
+      await page.fill('#draftPlayerName', name);
+      await page.click('button[data-action="draftAddPlayer"]');
+    }
+    for (let i = 1; i <= 4; i++) {
+      await page.click(`#draftRosterList .player-card:nth-child(${i}) button[data-action="draftToggleStarter"]`);
+    }
+    await page.click('#draftRosterList .player-card:nth-child(5) button[data-action="draftToggleAbsent"]');
+    await page.click('#draftRosterList .player-card:nth-child(6) button[data-action="draftToggleAbsent"]');
+    await page.click('button[data-action="saveSetup"]');
+    await page.waitForFunction(() => document.getElementById('setupModal').classList.contains('hidden'));
+
+    await page.click('#clockBtn');
+    assert.strictEqual(await page.innerText('#surfaceHeader'), 'On Court (4/5)', 'Surface header should show On Court (4/5)');
+
+    // Check in Looney to Bench while court is 4/5 so Bench card exposes + Court open-slot button
+    await page.click('#notHereToggleBtn');
+    await page.waitForFunction(() => !document.getElementById('notHereList').classList.contains('hidden'));
+    await page.locator('#notHereList .player-card', { hasText: 'Looney' }).locator('button[data-action="quickArrivedBench"]').click();
+    assert.strictEqual(
+      await page.innerText('#benchList .player-card button[data-action="enterFieldBtn"]'),
+      '+ Court',
+      'Bench card should show + Court button in Basketball open-slot state'
+    );
+
+    await page.click('#benchList .player-card button[data-action="enterFieldBtn"]');
+    assert.strictEqual(await page.innerText('#surfaceHeader'), 'On Court (5/5)', 'Surface header should update to On Court (5/5)');
+    assert.strictEqual(await page.locator('#benchList button[data-action="enterFieldBtn"]').count(), 0, '+ Court button must disappear at 5/5');
+
+    await page.waitForTimeout(1100);
+    assert.strictEqual(await page.innerText('#notHereToggleLabel'), 'Not Here Yet (1)', 'LateBaller should remain in Not Here Yet (1)');
+    await page.locator('#notHereList .player-card', { hasText: 'LateBaller' }).locator('button[data-action="quickArrivedBench"]').click();
+    assert.strictEqual(await page.innerText('#benchCount'), '1', 'Bench count should be 1 after LateBaller arrives');
+    assert.strictEqual(await page.isVisible('#notHereSection'), false, '#notHereSection should hide after LateBaller checks in');
+
+    const recCardTextT13 = await page.innerText('#recommendCard');
+    assert.ok(recCardTextT13.includes('Recommended Line Sub (1 ⇄ 1)'), `Batch line sub should show 1 ⇄ 1, got "${recCardTextT13}"`);
+    assert.ok(recCardTextT13.includes('LateBaller'), 'Batch recommendation should suggest LateBaller IN');
+    await page.click('button[data-action="makeBatchSub"]');
+    assert.ok((await page.innerText('#fieldList')).includes('LateBaller'), 'LateBaller should move onto court after Make Line Sub');
+
+    // Foul-out exclusion: mark the single bench player fouled out -> recommendBatch hides and noneEligibleNotice shows
+    await page.click('#benchList .player-card:first-child button[data-action="toggleFoulOutBtn"]');
+    assert.strictEqual(await page.isVisible('#recommendCard:not(.hidden)'), false, 'Fouled-out bench player must be excluded from batch recommendations');
+    assert.strictEqual(await page.isVisible('#noneEligibleNotice:not(.hidden)'), true, 'All bench players resting/fouled out notice should display');
+
+    // Roster modal uses Court labels in Basketball
+    await page.click('button[data-action="openRoster"]');
+    await page.waitForFunction(() => !document.getElementById('rosterModal').classList.contains('hidden'));
+    const rosterPresentText = await page.innerText('#rosterPresentList');
+    assert.ok(rosterPresentText.includes('On Court'), 'Roster modal must use On Court label in Basketball');
+    assert.strictEqual(rosterPresentText.includes('On Field'), false, 'Roster modal must not use On Field label in Basketball');
+    await page.locator('#rosterPresentList .player-card', { hasText: 'On Court' }).first().locator('button[data-action="rosterMarkAbsent"]').click();
+    await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('hidden'));
+    await page.click('#modalButtons button[data-action="confirmAbsentLeaveOpen"]');
+    await page.waitForFunction(() => document.getElementById('modalOverlay').classList.contains('hidden'));
+    assert.strictEqual(await page.innerText('#liveAddFieldBtn'), '+ Add to Court', 'Open-slot quick-add button should say + Add to Court');
+    assert.strictEqual(await page.innerText('#rosterAbsentList button[data-action="rosterArrivedField"]'), '→ Court', 'Absent check-in button should say → Court');
+    await page.click('button[data-action="closeRoster"]');
+    await page.waitForFunction(() => document.getElementById('rosterModal').classList.contains('hidden'));
+    testPass('Basketball Live Roster Parity (Court labels, + Court, Batch Sub & Foul-Out Exclusion)');
+
+    // ----------------------------------------------------
+    // TEST 14: Match Report Prorated Gauges, Absentee Exclusion & XSS Safety
+    // ----------------------------------------------------
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForFunction(() => !document.getElementById('setupModal').classList.contains('hidden'));
+
+    const t14Players = ['Mia', 'Leo', 'Ava', 'Jack', 'FullAbsent'];
+    for (const name of t14Players) {
+      await page.fill('#draftPlayerName', name);
+      await page.click('button[data-action="draftAddPlayer"]');
+    }
+    for (let i = 1; i <= 4; i++) {
+      await page.click(`#draftRosterList .player-card:nth-child(${i}) button[data-action="draftToggleStarter"]`);
+    }
+    await page.click('#draftRosterList .player-card:nth-child(5) button[data-action="draftToggleAbsent"]');
+    await page.click('button[data-action="saveSetup"]');
+    await page.waitForFunction(() => document.getElementById('setupModal').classList.contains('hidden'));
+
+    await page.click('#clockBtn');
+    await page.click('#fieldList .player-card:first-child button[data-action="scoreUsBtn"]');
+    await page.click('#fieldList .player-card:first-child button[data-action="toggleBadgeDrawer"]');
+    await page.click('button[data-action="awardBadge"][data-badge="hustle"]');
+    await page.waitForTimeout(1100);
+
+    // Quick-add validation rejects >20-char XSS payload safely, and <=20-char XSS payload renders literally
+    const shortXssPayload = '<svg onload=__x=1>';
+    const longXssPayload = '<img src=x onerror=window.__xss=1>';
+    await page.click('button[data-action="openRoster"]');
+    await page.waitForFunction(() => !document.getElementById('rosterModal').classList.contains('hidden'));
+    await page.fill('#livePlayerName', longXssPayload);
+    await page.click('button[data-action="liveAddBench"]');
+    assert.strictEqual(await page.isVisible('#rosterErrors:not(.hidden)'), true, 'Validation should reject >20 char player name');
+    assert.strictEqual(await page.evaluate(() => window.__xss), undefined, 'Rejected long XSS payload must not execute');
+
+    await page.fill('#livePlayerName', shortXssPayload);
+    await page.click('button[data-action="liveAddBench"]');
+    assert.strictEqual(await page.evaluate(() => window.__x), undefined, 'window.__x must remain undefined after UI quick-add');
+    assert.strictEqual(await page.locator('svg').count(), 0, 'No <svg> element should ever be injected into DOM');
+    assert.ok((await page.innerText('#rosterPresentList')).includes(shortXssPayload), 'Roster modal should render XSS payload as literal text');
+
+    // Mark Jack Left Early (leave slot open) so Match Report exercises Late Arrival, Left Early, and Absent together
+    await page.waitForTimeout(1100);
+    await page.locator('#rosterPresentList .player-card', { hasText: 'Jack' }).locator('button[data-action="rosterMarkAbsent"]').click();
+    await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('hidden'));
+    await page.click('#modalButtons button[data-action="confirmAbsentLeaveOpen"]');
+    await page.waitForFunction(() => document.getElementById('modalOverlay').classList.contains('hidden'));
+    await page.click('button[data-action="closeRoster"]');
+    await page.waitForFunction(() => document.getElementById('rosterModal').classList.contains('hidden'));
+
+    // Check literal rendering in Bench and Setup
+    assert.ok((await page.innerText('#benchList')).includes(shortXssPayload), 'Bench card should render XSS payload as literal text');
+    await page.click('button[data-action="openSetup"]');
+    await page.waitForFunction(() => !document.getElementById('setupModal').classList.contains('hidden'));
+    assert.ok((await page.innerText('#draftRosterList')).includes(shortXssPayload), 'Setup roster should render XSS payload as literal text');
+    await page.click('button[data-action="closeSetup"]');
+    await page.waitForFunction(() => document.getElementById('setupModal').classList.contains('hidden'));
+
+    // Check Match Report gauges, prorated labels, absentee omission & XSS safety
+    await page.click('button[data-action="openMatchLog"]');
+    await page.waitForFunction(() => !document.getElementById('matchLogModal').classList.contains('hidden'));
+    assert.strictEqual(await page.evaluate(() => window.__x), undefined, 'window.__x must remain undefined in Match Report');
+    assert.strictEqual(await page.locator('svg').count(), 0, 'No <svg> element should exist in Match Report DOM');
+
+    const logScorersText = await page.innerText('#logTopScorers');
+    assert.ok(logScorersText.includes(shortXssPayload), 'Player Box Score should render XSS payload as literal text');
+
+    const logPlaytimeText = await page.innerText('#logPlaytime');
+    assert.ok(logPlaytimeText.includes(shortXssPayload) && logPlaytimeText.includes('(Late Arrival)'), `Late arrival should display (Late Arrival) in #logPlaytime, got "${logPlaytimeText}"`);
+    assert.ok(logPlaytimeText.includes('Jack') && logPlaytimeText.includes('(Left Early)'), `Left early player should display (Left Early) in #logPlaytime, got "${logPlaytimeText}"`);
+    assert.ok(logPlaytimeText.includes('FullAbsent') && logPlaytimeText.includes('Absent'), `Full-game absent player should display Absent in #logPlaytime, got "${logPlaytimeText}"`);
+
+    const summaryText = await page.evaluate(() => generateParentSummaryText(Engine.recapMetrics(state, Date.now())));
+    assert.ok(summaryText.includes('Mia') && summaryText.includes(shortXssPayload), 'Parent summary should include active/late players');
+    assert.strictEqual(summaryText.includes('FullAbsent'), false, 'Parent summary must omit full-game absent player');
+
+    await page.click('button[data-action="closeMatchLog"]');
+    await page.waitForFunction(() => document.getElementById('matchLogModal').classList.contains('hidden'));
+
+    // Also verify longer 31-char <img src=x onerror=window.__xss=1> payload via state normalization/render across all views
+    await page.evaluate((payload) => {
+      const injected = Engine.normalize({
+        v: 4,
+        sport: 'soccer',
+        settings: { fieldSize: 2, periodMinutes: 8, periodCount: 4 },
+        roster: [{ id: 'xss1', name: payload }, { id: 'p2', name: 'Ben' }],
+        starterIds: ['xss1', 'p2'],
+        match: {
+          period: 1,
+          clock: { running: false, startedAt: null, elapsedMs: 60000 },
+          completedPeriodsMs: 0,
+          players: {
+            xss1: {
+              onField: true, stintStartMs: 0, periodMs: [60000, 0, 0, 0],
+              resting: false, fouledOut: false, absent: false,
+              arrivedAtMs: 0, firstArrivedAtMs: 0, departedAtMs: null, presentMs: 0,
+              badges: [{ id: 'b1', type: 'hustle', timestampMs: 10000 }]
+            },
+            p2: {
+              onField: true, stintStartMs: 0, periodMs: [60000, 0, 0, 0],
+              resting: false, fouledOut: false, absent: false,
+              arrivedAtMs: 0, firstArrivedAtMs: 0, departedAtMs: null, presentMs: 0,
+              badges: []
+            }
+          },
+          pinnedId: null, skipIds: [], undo: null,
+          score: { us: 1, them: 0 },
+          events: [{ id: 'e1', type: 'goal_us', playerId: 'xss1', points: 1, period: 1, clockMs: 20000 }],
+          lastSubOutId: null, midSubDoneForPeriod: 0
+        }
+      });
+      state = injected;
+      save();
+      renderAll();
+    }, longXssPayload);
+
+    assert.strictEqual(await page.evaluate(() => window.__xss), undefined, 'Normalized long XSS payload must not execute on Dashboard');
+    assert.ok((await page.innerText('#fieldList')).includes(longXssPayload), 'Dashboard must render long XSS payload literally');
+
+    await page.click('button[data-action="openRoster"]');
+    await page.waitForFunction(() => !document.getElementById('rosterModal').classList.contains('hidden'));
+    assert.ok((await page.innerText('#rosterPresentList')).includes(longXssPayload), 'Roster must render long XSS payload literally');
+    await page.click('button[data-action="closeRoster"]');
+
+    await page.click('button[data-action="openSetup"]');
+    await page.waitForFunction(() => !document.getElementById('setupModal').classList.contains('hidden'));
+    assert.ok((await page.innerText('#draftRosterList')).includes(longXssPayload), 'Setup must render long XSS payload literally');
+    await page.click('button[data-action="closeSetup"]');
+
+    await page.click('button[data-action="openMatchLog"]');
+    await page.waitForFunction(() => !document.getElementById('matchLogModal').classList.contains('hidden'));
+    await page.click('button[data-action="togglePlayByPlay"]');
+    await page.waitForFunction(() => !document.getElementById('logTimeline').classList.contains('hidden'));
+    assert.strictEqual(await page.evaluate(() => window.__xss), undefined, 'window.__xss must stay undefined across Roster, Setup & Match Report');
+    assert.strictEqual(await page.locator('img').count(), 0, 'No <img> element should ever be injected into DOM');
+    assert.ok((await page.innerText('#logTopScorers')).includes(longXssPayload), 'Match Report box score must render long XSS payload literally');
+    assert.ok((await page.innerText('#logImpactAwards')).includes(longXssPayload), 'Impact awards must render long XSS payload literally');
+    assert.ok((await page.innerText('#logTimeline')).includes(longXssPayload), 'Play-by-Play must render long XSS payload literally');
+    assert.ok((await page.innerText('#logPlaytime')).includes(longXssPayload), 'Playtime summary must render long XSS payload literally');
+    await page.click('button[data-action="closeMatchLog"]');
+    testPass('Match Report Prorated Gauges, Absentee Exclusion & XSS Safety');
+
+    assert.deepStrictEqual(pageErrors, [], `Expected zero uncaught page errors, got: ${JSON.stringify(pageErrors)}`);
+    assert.deepStrictEqual(consoleErrors, [], `Expected zero console errors, got: ${JSON.stringify(consoleErrors)}`);
+
+    console.log('\n✨ ALL 14 PLAYWRIGHT E2E TESTS PASSED SUCCESSFULLY! ✨');
 
   } catch (err) {
     console.error('\n❌ E2E TEST FAILED:', err);

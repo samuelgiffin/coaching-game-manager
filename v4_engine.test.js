@@ -330,6 +330,7 @@ test('Engine Basketball Line Swap, Mid-Quarter Alert & Foul-Out', async (t) => {
     ];
     state.starterIds = ['p1', 'p2'];
     state = Engine.resetMatch(state, 0);
+    state = Engine.start(state, 0);
 
     // Q1 scoring
     state = Engine.recordScore(state, 'us', 'p1', 3, 60000);
@@ -338,6 +339,8 @@ test('Engine Basketball Line Swap, Mid-Quarter Alert & Foul-Out', async (t) => {
 
     // Advance to Q4 and score comeback points
     state.match.period = 4;
+    state.match.clock.elapsedMs = 0;
+    state.match.clock.startedAt = 0;
     state = Engine.recordScore(state, 'us', 'p2', 2, 60000);
     state = Engine.recordScore(state, 'us', 'p1', 3, 120000);
 
@@ -357,8 +360,34 @@ test('Engine Basketball Line Swap, Mid-Quarter Alert & Foul-Out', async (t) => {
     // Team and player shot mix
     assert.deepStrictEqual(metrics.teamShotMix, { pt1: 1, pt2: 1, pt3: 2 });
     const steph = metrics.players.find(p => p.id === 'p1');
+    const klay = metrics.players.find(p => p.id === 'p2');
+    const draymond = metrics.players.find(p => p.id === 'p3');
     assert.strictEqual(steph.pointsScored, 7);
     assert.deepStrictEqual(steph.shotMix, { pt1: 1, pt2: 0, pt3: 2 });
+    assert.deepStrictEqual(steph.pointsByPeriod, [4, 0, 0, 3]);
+    assert.deepStrictEqual(klay.pointsByPeriod, [0, 0, 0, 2]);
+    assert.deepStrictEqual(draymond.pointsByPeriod, [0, 0, 0, 0]);
+
+    // Chronological playByPlay with running scores
+    assert.ok(Array.isArray(metrics.playByPlay));
+    assert.strictEqual(metrics.playByPlay.length, 5);
+    assert.deepStrictEqual(
+      metrics.playByPlay.map(e => ({
+        period: e.period,
+        clockMs: e.clockMs,
+        points: e.points,
+        playerName: e.playerName,
+        runningUs: e.runningUs,
+        runningThem: e.runningThem
+      })),
+      [
+        { period: 1, clockMs: 60000, points: 3, playerName: 'Steph', runningUs: 3, runningThem: 0 },
+        { period: 1, clockMs: 90000, points: 1, playerName: 'Steph', runningUs: 4, runningThem: 0 },
+        { period: 1, clockMs: 120000, points: 2, playerName: 'Opponent', runningUs: 4, runningThem: 2 },
+        { period: 4, clockMs: 60000, points: 2, playerName: 'Klay', runningUs: 6, runningThem: 2 },
+        { period: 4, clockMs: 120000, points: 3, playerName: 'Steph', runningUs: 9, runningThem: 2 }
+      ]
+    );
 
     // Headline & Impact awards
     assert.ok(typeof metrics.headline === 'string' && metrics.headline.length > 10);
@@ -472,5 +501,624 @@ test('Real-World Simulation & Edge-Case Regression Suite', async (t) => {
   });
 });
 
+test('Live Roster Schema, Presence Helpers & Roster-Aware Undo', async (t) => {
+  await t.test('SPORTS defines surfaceNoun for soccer (Field) and basketball (Court)', () => {
+    assert.strictEqual(Engine.SPORTS.soccer.surfaceNoun, 'Field');
+    assert.strictEqual(Engine.SPORTS.basketball.surfaceNoun, 'Court');
+  });
 
+  await t.test('normalize backfills attendance fields and completedPeriodsMs on legacy saves', () => {
+    const legacy = {
+      v: 4,
+      sport: 'soccer',
+      settings: { fieldSize: 5, periodMinutes: 8, periodCount: 4 },
+      roster: [{ id: 'p1', name: 'Mason' }],
+      starterIds: ['p1'],
+      match: {
+        period: 2,
+        clock: { running: false, startedAt: null, elapsedMs: 60000 },
+        players: {
+          p1: { onField: true, stintStartMs: 0, periodMs: [480000, 0, 0, 0], resting: false, badges: [] }
+        }
+      }
+    };
+    const s = Engine.normalize(legacy);
+    assert.strictEqual(s.match.completedPeriodsMs, 480000);
+    assert.strictEqual(s.match.players.p1.absent, false);
+    assert.strictEqual(s.match.players.p1.arrivedAtMs, 0);
+    assert.strictEqual(s.match.players.p1.firstArrivedAtMs, 0);
+    assert.strictEqual(s.match.players.p1.departedAtMs, null);
+    assert.strictEqual(s.match.players.p1.presentMs, 0);
+  });
 
+  await t.test('advancePeriod accumulates exact completedPeriodsMs even when advancing early', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+    // Advance period early at 5:00 (300,000 ms instead of 480,000 ms)
+    s = Engine.advancePeriod(s, 300000);
+    assert.strictEqual(s.match.period, 2);
+    assert.strictEqual(s.match.completedPeriodsMs, 300000);
+    assert.strictEqual(Engine.matchElapsedMs(s, 300000), 300000);
+    assert.strictEqual(Engine.playerPresentMs(s, 'p1', 300000), 300000);
+  });
+
+  await t.test('hasMatchActivity detects clock, period, score, events, badges, and played time', () => {
+    let s = Engine.createState('soccer');
+    s.roster = [{ id: 'p1', name: 'A' }];
+    s.starterIds = ['p1'];
+    s = Engine.resetMatch(s, 0);
+    assert.strictEqual(Engine.hasMatchActivity(s), false);
+
+    const withGoal = Engine.recordScore(s, 'us', 'p1', 1, 0);
+    assert.strictEqual(Engine.hasMatchActivity(withGoal), true);
+
+    const withBadge = Engine.awardBadge(s, 'p1', 'hustle', 0);
+    assert.strictEqual(Engine.hasMatchActivity(withBadge), true);
+
+    const withClock = Engine.start(s, 1000);
+    assert.strictEqual(Engine.hasMatchActivity(withClock), true);
+  });
+
+  await t.test('undo restores optional roster and starterIds while keeping clock running', () => {
+    let s = Engine.createState('soccer');
+    s.roster = [{ id: 'p1', name: 'A' }];
+    s.starterIds = ['p1'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+    const snapRoster = JSON.parse(JSON.stringify(s.roster));
+    const snapStarters = JSON.parse(JSON.stringify(s.starterIds));
+    const snapMatch = JSON.parse(JSON.stringify(s.match));
+
+    s.roster.push({ id: 'p2', name: 'Late' });
+    s.starterIds.push('p2');
+    s.match.undo = { label: 'Added Late', keepClock: true, roster: snapRoster, starterIds: snapStarters, match: snapMatch };
+
+    const undone = Engine.undo(s, 30000);
+    assert.strictEqual(undone.roster.length, 1);
+    assert.deepStrictEqual(undone.starterIds, ['p1']);
+    assert.strictEqual(undone.match.clock.running, true);
+    assert.strictEqual(Engine.clockMs(undone, 30000), 30000);
+  });
+
+  await t.test('isMatchComplete, playerHasMatchData, and resetMatch attendance/pruning', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }, { id: 'p3', name: 'C' }];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+
+    // resetMatch initializes attendance fields
+    assert.strictEqual(s.match.completedPeriodsMs, 0);
+    assert.strictEqual(s.match.players.p1.absent, false);
+    assert.strictEqual(s.match.players.p1.arrivedAtMs, 0);
+    assert.strictEqual(s.match.players.p1.firstArrivedAtMs, 0);
+    assert.strictEqual(s.match.players.p1.departedAtMs, null);
+    assert.strictEqual(s.match.players.p1.presentMs, 0);
+
+    // playerHasMatchData detects played time, badges, and events
+    assert.strictEqual(Engine.playerHasMatchData(s, 'p3', 0), false);
+    s = Engine.start(s, 0);
+    assert.strictEqual(Engine.playerHasMatchData(s, 'p1', 10000), true);
+    assert.strictEqual(Engine.playerHasMatchData(s, 'p3', 10000), false);
+
+    // isMatchComplete requires final period and full period clock
+    assert.strictEqual(Engine.isMatchComplete(s, 480000), false);
+    s.match.period = 4;
+    s.match.clock = { running: false, startedAt: null, elapsedMs: 479999 };
+    assert.strictEqual(Engine.isMatchComplete(s, 479999), false);
+    s.match.clock.elapsedMs = 480000;
+    assert.strictEqual(Engine.isMatchComplete(s, 480000), true);
+
+    // resetMatch prunes removed players from match.players
+    s.roster = [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }];
+    const reset = Engine.resetMatch(s, 500000);
+    assert.strictEqual(reset.match.players.p3, undefined);
+  });
+});
+
+test('Pure Prorated Fairness & Late-Arrival Recommendation Ranking (Soccer + Basketball)', async (t) => {
+  await t.test('late arrival enters with 0:00 fairDeltaMs and queues behind waiting bench player in Soccer', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'p1', name: 'Starter1' },
+      { id: 'p2', name: 'Starter2' },
+      { id: 'p3', name: 'BenchWaiter' },
+      { id: 'p4', name: 'LateKid' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    // p4 starts absent
+    s.match.players.p4.absent = true;
+    s.match.players.p4.arrivedAtMs = null;
+    s.match.players.p4.firstArrivedAtMs = null;
+
+    s = Engine.start(s, 0);
+    // At 3:00 (180,000 ms): p1 & p2 played 180s, p3 waited 180s (totalMs = 0), then p3 subs in for 60s so p3 has 60s played
+    s = Engine.substitute(s, 'p1', 'p3', 180000);
+    // At 4:00 (240,000 ms): p1=180s, p2=240s, p3=60s; now sub p1 back in so p3 is on bench with 60s played (underplayed vs 160s avg)
+    s = Engine.substitute(s, 'p3', 'p1', 240000);
+    // At 4:00 (240,000 ms): p4 arrives late with 0s played, 0s present
+    s.match.players.p4.absent = false;
+    s.match.players.p4.arrivedAtMs = 240000;
+    s.match.players.p4.firstArrivedAtMs = 240000;
+    s.match.players.p4.stintStartMs = 240000;
+
+    const tLate = Engine.times(s, 'p4', 240000);
+    const tWaiter = Engine.times(s, 'p3', 240000);
+    assert.strictEqual(tLate.presentMs, 0);
+    assert.strictEqual(tLate.targetMs, 0);
+    assert.strictEqual(tLate.fairDeltaMs, 0, 'Late arrival must start at 0:00 fairDeltaMs');
+    assert.strictEqual(tLate.satMs, 0, 'Late arrival satMs must start at 0:00');
+    assert.ok(tWaiter.fairDeltaMs < 0, `BenchWaiter should be negative fairDeltaMs, got ${tWaiter.fairDeltaMs}`);
+
+    // Even though p4 has totalMs=0 and p3 has totalMs=60s, p3 has negative fairDeltaMs (-100s) vs p4 (0s).
+    // Clear lastSubOutId so we purely test prorated fairness ranking.
+    s.match.lastSubOutId = null;
+    const rec = Engine.recommend(s, 240000);
+    assert.strictEqual(rec.inId, 'p3', 'Soccer recommend must pick underplayed BenchWaiter ahead of just-arrived LateKid');
+  });
+
+  await t.test('Basketball recommendBatch excludes absent players and ranks late arrival by prorated fairDeltaMs', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'p1', name: 'Steph' },
+      { id: 'p2', name: 'Klay' },
+      { id: 'p3', name: 'Poole' },
+      { id: 'p4', name: 'LateArrival' },
+      { id: 'p5', name: 'StillAbsent' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s.match.players.p4.absent = true;
+    s.match.players.p4.arrivedAtMs = null;
+    s.match.players.p4.firstArrivedAtMs = null;
+    s.match.players.p5.absent = true;
+    s.match.players.p5.arrivedAtMs = null;
+    s.match.players.p5.firstArrivedAtMs = null;
+
+    s = Engine.start(s, 0);
+    // Only p3 is on bench at 2:00 (p4 & p5 absent) -> batch should swap 1 pair (only p3)
+    const batchBefore = Engine.recommendBatch(s, 120000);
+    assert.deepStrictEqual(batchBefore.inIds, ['p3']);
+
+    // Give p3 30s of play then put back on bench at 3:00 so p3 has 30s played (still strongly underplayed)
+    s = Engine.substitute(s, 'p1', 'p3', 120000);
+    s = Engine.substitute(s, 'p3', 'p1', 150000);
+
+    // At 3:00 (180,000 ms), p4 arrives late (0s played, 0:00 fairDeltaMs), p5 remains absent
+    s.match.players.p4.absent = false;
+    s.match.players.p4.arrivedAtMs = 180000;
+    s.match.players.p4.firstArrivedAtMs = 180000;
+    s.match.players.p4.stintStartMs = 180000;
+
+    const batchAfter = Engine.recommendBatch(s, 180000);
+    assert.deepStrictEqual(batchAfter.inIds, ['p3', 'p4'], 'Poole (underplayed) must rank first ahead of LateArrival, and StillAbsent excluded');
+  });
+
+  await t.test('shorthanded start (4 of 5) keeps all 4 active players at 0:00 fairDeltaMs', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 5, periodMinutes: 8, periodCount: 4 };
+    s.roster = ['p1', 'p2', 'p3', 'p4'].map(id => ({ id, name: id }));
+    s.starterIds = ['p1', 'p2', 'p3', 'p4'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+
+    const t1 = Engine.times(s, 'p1', 180000);
+    assert.strictEqual(t1.totalMs, 180000);
+    assert.strictEqual(t1.targetMs, 180000);
+    assert.strictEqual(t1.fairDeltaMs, 0);
+  });
+
+  await t.test('recommend and recommendBatch treat all-absent bench as no-bench', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'p1', name: 'Starter1' },
+      { id: 'p2', name: 'Starter2' },
+      { id: 'p3', name: 'AbsentKid' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s.match.players.p3.absent = true;
+    s.match.players.p3.arrivedAtMs = null;
+    s.match.players.p3.firstArrivedAtMs = null;
+
+    assert.strictEqual(Engine.recommend(s, 60000).status, 'no-bench');
+    s.sport = 'basketball';
+    assert.strictEqual(Engine.recommendBatch(s, 60000).status, 'no-bench');
+  });
+});
+
+test('Safe Live Roster Actions & Non-Destructive Setup', async (t) => {
+  await t.test('addPlayerLive adds late player to bench or open field/court slot without resetting match', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 5, periodMinutes: 8, periodCount: 4 };
+    s.roster = ['p1', 'p2', 'p3', 'p4'].map(id => ({ id, name: id.toUpperCase() }));
+    s.starterIds = ['p1', 'p2', 'p3', 'p4'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+    s = Engine.recordScore(s, 'us', 'p1', 1, 60000);
+
+    // Duplicate rejected
+    const dup = Engine.addPlayerLive(s, 'p1', {}, 120000);
+    assert.strictEqual(dup.ok, false);
+
+    // Add 5th player straight onto open Field slot at 2:00 (120,000 ms)
+    const res = Engine.addPlayerLive(s, 'Sam', { putOnField: true }, 120000);
+    assert.strictEqual(res.ok, true);
+    s = res.state;
+    const pSam = s.match.players[res.playerId];
+    assert.strictEqual(pSam.onField, true);
+    assert.strictEqual(pSam.arrivedAtMs, 120000);
+    assert.strictEqual(pSam.firstArrivedAtMs, 120000);
+    assert.strictEqual(pSam.stintStartMs, 120000);
+    assert.strictEqual(s.match.score.us, 1, 'Score must remain intact');
+    assert.strictEqual(s.match.clock.running, true, 'Clock must keep running');
+
+    // Adding 6th player with putOnField=true while already 5/5 puts them on bench safely
+    const res6 = Engine.addPlayerLive(s, 'Alex', { putOnField: true }, 130000);
+    assert.strictEqual(res6.ok, true);
+    assert.strictEqual(res6.state.match.players[res6.playerId].onField, false);
+
+    // Undo restores roster without stopping clock
+    const undone = Engine.undo(res6.state, 140000);
+    assert.strictEqual(undone.roster.length, 5);
+    assert.strictEqual(undone.match.clock.running, true);
+  });
+
+  await t.test('markPlayerArrived, markPlayerAbsent (bench / swap / leave-open) and enterField work cleanly', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'p1', name: 'Steph' },
+      { id: 'p2', name: 'Klay' },
+      { id: 'p3', name: 'Poole' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    // Mark p3 absent pre-game
+    s = Engine.markPlayerAbsent(s, 'p3', null, 0);
+    assert.strictEqual(s.match.players.p3.absent, true);
+    assert.strictEqual(s.match.players.p3.departedAtMs, null);
+
+    s = Engine.start(s, 0);
+    // At 2:00, p2 leaves early with no replacement -> leaves court slot open (1/2)
+    s = Engine.markPlayerAbsent(s, 'p2', null, 120000);
+    assert.strictEqual(s.match.players.p2.absent, true);
+    assert.strictEqual(s.match.players.p2.onField, false);
+    assert.strictEqual(s.match.players.p2.periodMs[0], 120000);
+    assert.strictEqual(s.match.players.p2.presentMs, 120000);
+    assert.strictEqual(s.match.players.p2.departedAtMs, 120000);
+
+    // At 3:00, p3 arrives late onto Bench, then enters open Court slot via enterField
+    s = Engine.markPlayerArrived(s, 'p3', { putOnField: false }, 180000);
+    assert.strictEqual(s.match.players.p3.absent, false);
+    assert.strictEqual(s.match.players.p3.onField, false);
+    assert.strictEqual(s.match.players.p3.arrivedAtMs, 180000);
+
+    s = Engine.enterField(s, 'p3', 190000);
+    assert.strictEqual(s.match.players.p3.onField, true);
+    assert.strictEqual(s.match.players.p3.stintStartMs, 190000);
+
+    // p2 returns later at 4:00 (240,000 ms) -> presentMs preserved + new stint begins
+    s = Engine.markPlayerArrived(s, 'p2', { putOnField: false }, 240000);
+    assert.strictEqual(s.match.players.p2.absent, false);
+    assert.strictEqual(s.match.players.p2.departedAtMs, null);
+    assert.strictEqual(Engine.playerPresentMs(s, 'p2', 300000), 180000, '120s initial + 60s after return');
+
+    // p1 leaves early with p2 atomically subbed in at 5:00
+    s = Engine.markPlayerAbsent(s, 'p1', 'p2', 300000);
+    assert.strictEqual(s.match.players.p1.absent, true);
+    assert.strictEqual(s.match.players.p1.onField, false);
+    assert.strictEqual(s.match.players.p2.onField, true);
+  });
+
+  await t.test('removePlayerFromRoster blocks players with match stats and supports undo when removable', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }, { id: 'p3', name: 'C' }];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+
+    // p1 has playtime at 60s -> blocked
+    const blocked = Engine.removePlayerFromRoster(s, 'p1', 60000);
+    assert.strictEqual(blocked.ok, false);
+    assert.strictEqual(blocked.reason, 'has-match-data');
+
+    // p3 sat on bench with 0 playtime/goals/badges -> removable & undoable
+    const removed = Engine.removePlayerFromRoster(s, 'p3', 60000);
+    assert.strictEqual(removed.ok, true);
+    assert.strictEqual(removed.state.roster.length, 2);
+
+    const restored = Engine.undo(removed.state, 65000);
+    assert.strictEqual(restored.roster.length, 3);
+    assert.ok(restored.match.players.p3);
+  });
+
+  await t.test('applySetup mid-game never fails starterIds validation and never resets match', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 5, periodMinutes: 8, periodCount: 4 };
+    s.roster = ['p1', 'p2', 'p3', 'p4'].map(id => ({ id, name: id.toUpperCase() }));
+    s.starterIds = ['p1', 'p2', 'p3', 'p4'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+    s = Engine.recordScore(s, 'us', 'p1', 1, 60000);
+
+    // Adding a 5th player via applySetup mid-game with starterIds still length 4 MUST succeed without resetting!
+    const draft = {
+      sport: 'soccer',
+      fieldSize: 5,
+      periodMinutes: 8,
+      periodCount: 4,
+      roster: [...s.roster, { id: 'p5', name: 'Late5' }],
+      starterIds: ['p1', 'p2', 'p3', 'p4']
+    };
+    const res = Engine.applySetup(s, draft, 120000);
+    assert.strictEqual(res.ok, true, `Expected applySetup mid-game to succeed, errors: ${JSON.stringify(res.errors)}`);
+    assert.strictEqual(res.state.roster.length, 5);
+    assert.strictEqual(res.state.match.score.us, 1);
+    assert.strictEqual(res.state.match.players.p5.arrivedAtMs, 120000);
+    assert.strictEqual(res.state.match.players.p5.onField, false);
+  });
+
+  await t.test('applySetup pre-kickoff respects absentIds without requiring absent players as starters', () => {
+    let s = Engine.createState('soccer');
+    const draft = {
+      sport: 'soccer',
+      fieldSize: 5,
+      periodMinutes: 8,
+      periodCount: 4,
+      roster: [
+        { id: 'p1', name: 'A' },
+        { id: 'p2', name: 'B' },
+        { id: 'p3', name: 'C' },
+        { id: 'p4', name: 'D' },
+        { id: 'p5', name: 'AbsentKid' }
+      ],
+      starterIds: ['p1', 'p2', 'p3', 'p4'],
+      absentIds: ['p5']
+    };
+    const res = Engine.applySetup(s, draft, 0);
+    assert.strictEqual(res.ok, true, `Expected pre-kickoff Setup with 1 absent to pass, errors: ${JSON.stringify(res.errors)}`);
+    assert.strictEqual(res.state.match.players.p5.absent, true);
+    assert.strictEqual(res.state.match.players.p5.arrivedAtMs, null);
+    assert.strictEqual(res.state.match.players.p1.onField, true);
+  });
+});
+
+test('Match Report Prorated Targets & Absentee Handling', async (t) => {
+  await t.test('recapMetrics gives late arrival an individual prorated target and marks full-game absentee cleanly', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 10, periodCount: 2 };
+    s.roster = [
+      { id: 'p1', name: 'Full1' },
+      { id: 'p2', name: 'Full2' },
+      { id: 'p3', name: 'LateKid' },
+      { id: 'p4', name: 'NoShow' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.markPlayerAbsent(s, 'p3', null, 0);
+    s = Engine.markPlayerAbsent(s, 'p4', null, 0);
+
+    s = Engine.start(s, 0);
+    // p3 arrives at 5:00 (300,000 ms), plays 2:30 (150,000 ms) from 5:00 to 7:30, sits 7:30 to 10:00
+    s = Engine.markPlayerArrived(s, 'p3', { putOnField: false }, 300000);
+    s = Engine.substitute(s, 'p1', 'p3', 300000);
+    s = Engine.substitute(s, 'p3', 'p1', 450000);
+
+    // Evaluate at 10:00 (600,000 ms)
+    const metrics = Engine.recapMetrics(s, 600000);
+    const m1 = metrics.players.find(p => p.id === 'p1');
+    const m3 = metrics.players.find(p => p.id === 'p3');
+    const m4 = metrics.players.find(p => p.id === 'p4');
+
+    // Present times: p1=600s, p2=600s, p3=300s (total 1500s). Total played = 1200s.
+    // Prorated targets: p1=480s, p2=480s, p3=240s.
+    assert.strictEqual(m1.targetMs, 480000);
+    assert.strictEqual(m3.targetMs, 240000);
+    assert.strictEqual(m3.arrivedLate, true);
+    assert.strictEqual(m3.absentAllGame, false);
+    assert.strictEqual(m3.fairnessStatus, 'equal', '150s vs 240s target is within 90s tolerance -> equal');
+
+    assert.strictEqual(m4.absentAllGame, true);
+    assert.strictEqual(m4.targetMs, 0);
+    assert.strictEqual(m4.fairnessStatus, 'absent');
+  });
+
+  await t.test('recapMetrics handles leftEarly, over/under thresholds, kickoff 0:00, and fouledOut prorating', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 10, periodCount: 2 };
+    s.roster = [
+      { id: 'p1', name: 'LeftEarly' },
+      { id: 'p2', name: 'FullStar' },
+      { id: 'p3', name: 'SubIn' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+
+    // Pre-kickoff (matchElapsed === 0)
+    const pre = Engine.recapMetrics(s, 0);
+    assert.strictEqual(pre.targetMs, 0);
+    assert.strictEqual(pre.players[0].targetMs, 0);
+    assert.strictEqual(pre.players[0].fairnessStatus, 'equal');
+
+    s = Engine.start(s, 0);
+    // At 5:00 (300,000 ms), p1 leaves early and p3 subs in
+    s = Engine.markPlayerAbsent(s, 'p1', 'p3', 300000);
+
+    const mid = Engine.recapMetrics(s, 600000);
+    const mp1 = mid.players.find(p => p.id === 'p1');
+    const mp2 = mid.players.find(p => p.id === 'p2');
+    const mp3 = mid.players.find(p => p.id === 'p3');
+
+    assert.strictEqual(mp1.presentMs, 300000);
+    assert.strictEqual(mp1.targetMs, 240000);
+    assert.strictEqual(mp1.targetDeltaMs, 60000);
+    assert.strictEqual(mp1.fairnessStatus, 'equal');
+    assert.strictEqual(mp1.leftEarly, true);
+    assert.strictEqual(mp1.arrivedLate, false);
+    assert.strictEqual(mp1.absentAllGame, false);
+
+    assert.strictEqual(mp2.targetMs, 480000);
+    assert.strictEqual(mp2.targetDeltaMs, 120000);
+    assert.strictEqual(mp2.fairnessStatus, 'over');
+
+    assert.strictEqual(mp3.targetMs, 480000);
+    assert.strictEqual(mp3.targetDeltaMs, -180000);
+    assert.strictEqual(mp3.fairnessStatus, 'under');
+    assert.strictEqual(mid.targetMs, 480000);
+
+    // Basketball fouledOut player gets prorated target using attending rate without polluting pool
+    let b = Engine.createState('basketball');
+    b.settings = { fieldSize: 2, periodMinutes: 10, periodCount: 4 };
+    b.roster = [
+      { id: 'b1', name: 'Fouled' },
+      { id: 'b2', name: 'Active1' },
+      { id: 'b3', name: 'Active2' }
+    ];
+    b.starterIds = ['b1', 'b2'];
+    b = Engine.resetMatch(b, 0);
+    b = Engine.start(b, 0);
+    b = Engine.toggleFoulOut(b, 'b1', 300000);
+    b = Engine.enterField(b, 'b3', 300000);
+    b = Engine.start(b, 300000);
+
+    const bMetrics = Engine.recapMetrics(b, 600000);
+    const mb1 = bMetrics.players.find(p => p.id === 'b1');
+    assert.strictEqual(mb1.fouledOut, true);
+    assert.strictEqual(mb1.presentMs, 600000);
+    assert.strictEqual(mb1.targetMs, 450000);
+  });
+});
+
+test('Final Review Hardening Guards', async (t) => {
+  await t.test('applySetup rejects NaN / 0 / non-integer fieldSize and periodMinutes without NaN starter message', () => {
+    const s = Engine.createState('soccer');
+    const baseRoster = [
+      { id: 'p1', name: 'A' },
+      { id: 'p2', name: 'B' },
+      { id: 'p3', name: 'C' }
+    ];
+
+    for (const badFieldSize of [NaN, 0, 1, 2.5, 12]) {
+      for (const badMinutes of [NaN, 0, -5, 4.5, 46]) {
+        const res = Engine.applySetup(s, {
+          sport: 'soccer',
+          fieldSize: badFieldSize,
+          periodMinutes: badMinutes,
+          periodCount: 4,
+          roster: baseRoster,
+          starterIds: ['p1', 'p2']
+        }, 0);
+        assert.strictEqual(res.ok, false);
+        assert.ok(res.errors.includes('Field size must be 2-11'), `Expected fieldSize error for ${badFieldSize}`);
+        assert.ok(res.errors.includes('Period minutes must be 1-45'), `Expected periodMinutes error for ${badMinutes}`);
+        assert.ok(
+          !res.errors.some(e => e.includes('NaN')),
+          `Unexpected NaN error message: ${JSON.stringify(res.errors)}`
+        );
+        assert.ok(
+          !res.errors.some(e => e.startsWith('Must select exactly')),
+          `Starter count check should be skipped when fieldSize is invalid: ${JSON.stringify(res.errors)}`
+        );
+      }
+    }
+  });
+
+  await t.test('markPlayerArrived keeps fouled-out player on bench even with open court slot and putOnField true', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 3, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'b1', name: 'FouledKid' },
+      { id: 'b2', name: 'Active1' },
+      { id: 'b3', name: 'Active2' }
+    ];
+    s.starterIds = ['b1', 'b2', 'b3'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+    s = Engine.toggleFoulOut(s, 'b1', 60000);
+    assert.strictEqual(s.match.players.b1.fouledOut, true);
+    assert.strictEqual(s.match.players.b1.onField, false);
+
+    // Mark fouled-out player absent (left early), leaving an open slot (2 on court < fieldSize 3)
+    s = Engine.markPlayerAbsent(s, 'b1', null, 120000);
+    assert.strictEqual(s.match.players.b1.absent, true);
+    assert.strictEqual(Engine._countOnField(s), 2);
+
+    // Player returns with putOnField: true -> must stay on bench with fouledOut: true
+    s = Engine.markPlayerArrived(s, 'b1', { putOnField: true }, 180000);
+    assert.strictEqual(s.match.players.b1.absent, false);
+    assert.strictEqual(s.match.players.b1.onField, false);
+    assert.strictEqual(s.match.players.b1.fouledOut, true);
+  });
+
+  await t.test('resetMatch undo restores roster and starterIds after a pre-kickoff Setup edit', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'p1', name: 'Orig1' },
+      { id: 'p2', name: 'Orig2' },
+      { id: 'p3', name: 'Orig3' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+    s = Engine.recordScore(s, 'us', 'p1', 1, 30000);
+
+    s = Engine.resetMatch(s, 60000);
+    assert.ok(Array.isArray(s.match.undo.roster));
+    assert.ok(Array.isArray(s.match.undo.starterIds));
+
+    const setupRes = Engine.applySetup(s, {
+      sport: 'soccer',
+      fieldSize: 2,
+      periodMinutes: 8,
+      periodCount: 4,
+      roster: [
+        { id: 'p1', name: 'Orig1' },
+        { id: 'p4', name: 'NewKid' }
+      ],
+      starterIds: ['p1', 'p4']
+    }, 65000);
+    assert.strictEqual(setupRes.ok, true);
+    assert.strictEqual(setupRes.state.match.undo.label, 'Reset Match');
+
+    const undone = Engine.undo(setupRes.state, 70000);
+    assert.deepStrictEqual(undone.roster.map(r => r.id), ['p1', 'p2', 'p3']);
+    assert.deepStrictEqual(undone.starterIds, ['p1', 'p2']);
+    assert.strictEqual(undone.match.score.us, 1);
+    assert.ok(undone.match.players.p2 && undone.match.players.p3);
+  });
+
+  await t.test('substitute, substituteBatch, and foulOutAndSub reject absent incoming players', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'p1', name: 'On1' },
+      { id: 'p2', name: 'On2' },
+      { id: 'p3', name: 'AbsentKid' },
+      { id: 'p4', name: 'BenchKid' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.markPlayerAbsent(s, 'p3', null, 0);
+    s = Engine.start(s, 0);
+
+    const subRes = Engine.substitute(s, 'p1', 'p3', 60000);
+    assert.strictEqual(subRes, s);
+
+    const batchRes = Engine.substituteBatch(s, ['p1', 'p2'], ['p3', 'p4'], 60000);
+    assert.strictEqual(batchRes, s);
+
+    const foulRes = Engine.foulOutAndSub(s, 'p1', 'p3', 60000);
+    assert.strictEqual(foulRes, s);
+  });
+});

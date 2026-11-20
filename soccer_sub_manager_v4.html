@@ -164,6 +164,40 @@
       color: white;
     }
 
+    .bg-red-700 {
+      background-color: #b91c1c;
+      color: #ffffff;
+    }
+
+    .bg-slate-200 {
+      background-color: #e2e8f0;
+      color: #0f172a;
+    }
+
+    .bg-amber-bg {
+      background-color: var(--amber-bg);
+    }
+
+    .bg-cobalt-bg {
+      background-color: var(--cobalt-bg);
+    }
+
+    .text-white {
+      color: #ffffff;
+    }
+
+    .text-slate-700 {
+      color: #334155;
+    }
+
+    .text-slate-900 {
+      color: #0f172a;
+    }
+
+    .block {
+      display: block;
+    }
+
     .text-xs {
       font-size: 0.75rem;
     }
@@ -485,7 +519,7 @@
       position: fixed;
       inset: 0;
       background: rgba(0, 0, 0, 0.7);
-      z-index: 50;
+      z-index: 80;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -507,6 +541,30 @@
       z-index: 60;
       overflow-y: auto;
       padding: 1rem;
+    }
+
+    #rosterModal {
+      position: fixed;
+      inset: 0;
+      background: #ffffff;
+      z-index: 60;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+
+    .danger-zone {
+      margin-top: 1.5rem;
+      padding: 0.875rem;
+      border: 2px solid #b91c1c;
+      border-radius: 0.75rem;
+      background: #fff1f2;
+    }
+
+    .not-here-toggle {
+      min-height: 42px;
+      font-size: 13px;
+      background-color: #f1f5f9;
+      color: #0f172a;
     }
 
     .setup-input {
@@ -714,6 +772,7 @@
         </div>
         <div class="flex items-center gap-2">
           <button data-action="toggleClock" id="clockBtn" class="sun-btn bg-emerald-600">START</button>
+          <button data-action="openRoster" id="openRosterBtn" class="sun-btn" aria-label="Roster">👥</button>
           <button data-action="openSetup" class="sun-btn" aria-label="Setup">⚙️</button>
         </div>
       </div>
@@ -738,6 +797,16 @@
     <div class="mt-4 mb-4">
       <div class="text-xs font-black uppercase mb-2">Bench (<span id="benchCount">0</span>)</div>
       <div id="benchList" class="card-list"></div>
+    </div>
+
+    <div id="notHereSection" class="mt-4 mb-4 hidden">
+      <button data-action="toggleNotHere" id="notHereToggleBtn"
+        class="sun-btn not-here-toggle w-full flex justify-between items-center bg-slate-100"
+        style="min-height:42px; font-size:13px;">
+        <span id="notHereToggleLabel">Not Here Yet (0)</span>
+        <span id="notHereChevron">▸</span>
+      </button>
+      <div id="notHereList" class="card-list mt-2 hidden"></div>
     </div>
 
     <div id="recommendCard" class="sun-card bg-cobalt-bg hidden">
@@ -778,7 +847,6 @@
 
     <div class="flex gap-2 mt-4 pt-4 border-t-2">
       <button id="advancePeriodConfirmBtn" data-action="advancePeriodConfirm" class="sun-btn w-full">Next Period →</button>
-      <button data-action="resetMatchConfirm" class="sun-btn">Reset</button>
     </div>
   </main>
 
@@ -810,6 +878,15 @@
       </div>
 
       <div id="setupErrors" class="hidden text-sm font-bold mb-4" style="color:#b91c1c;"></div>
+
+      <div id="setupLiveNotice" class="sun-card bg-amber-bg hidden mb-4">
+        <div class="text-xs font-bold mb-2">
+          Match in progress — field size, period minutes, and starters are locked so your game can't be reset. Use Roster &amp; Attendance for late arrivals or absences.
+        </div>
+        <button data-action="openRosterFromSetup" class="sun-btn bg-slate-900 w-full" style="min-height:40px;">
+          👥 Open Roster &amp; Attendance
+        </button>
+      </div>
 
       <div class="flex gap-2 mb-4" id="sportSelector">
         <button data-action="selectSport" data-sport="soccer" class="sun-btn bg-slate-900 w-full">⚽ Soccer</button>
@@ -847,49 +924,103 @@
         <button data-action="saveSetup" class="sun-btn bg-emerald-600 w-full">Save</button>
         <button data-action="downloadHtml" class="sun-btn" aria-label="Download App HTML">💾</button>
       </div>
+
+      <div id="setupDangerZone" class="danger-zone">
+        <div class="text-xs font-black uppercase mb-1" style="color:#b91c1c;">Danger Zone</div>
+        <div class="text-xs font-bold text-slate-700 mb-2">
+          Resets clock, period, score, and playtimes to zero. Your saved team roster is kept.
+        </div>
+        <button data-action="resetMatchConfirm" class="sun-btn bg-red-700 w-full" style="min-height:42px;">
+          Reset Match
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="rosterModal" class="hidden">
+    <div class="max-w-md">
+      <div class="flex justify-between items-center mb-2">
+        <div>
+          <h2 class="font-black text-xl" style="margin:0;">Roster &amp; Attendance</h2>
+          <div id="rosterSummaryCount" class="text-xs font-bold text-slate-500">0 Present • 0 Absent</div>
+        </div>
+        <button data-action="closeRoster" class="sun-btn" aria-label="Close Roster">✕</button>
+      </div>
+
+      <div class="text-xs font-bold text-slate-500 mb-3">
+        Adding, checking in, or marking players absent never resets the clock or score.
+      </div>
+
+      <div id="rosterErrors" class="hidden text-sm font-bold mb-3" style="color:#b91c1c;"></div>
+
+      <div class="mb-4">
+        <label for="livePlayerName" class="text-xs font-black uppercase block">Quick-Add Player</label>
+        <div class="flex gap-2 mt-1">
+          <input type="text" id="livePlayerName" class="setup-input" style="margin-top:0;" placeholder="Player name">
+        </div>
+        <div class="flex gap-2 mt-2">
+          <button data-action="liveAddBench" id="liveAddBenchBtn" class="sun-btn bg-emerald-600 w-full" style="min-height:42px;">+ Add to Bench</button>
+          <button data-action="liveAddField" id="liveAddFieldBtn" class="sun-btn bg-blue-700 w-full hidden" style="min-height:42px;">+ Add to Field</button>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <div class="text-xs font-black uppercase mb-2">Present (<span id="rosterPresentCount">0</span>)</div>
+        <div id="rosterPresentList" class="card-list"></div>
+      </div>
+
+      <div id="rosterAbsentSection" class="mb-4 hidden">
+        <div class="text-xs font-black uppercase mb-2">Not Here Yet / Absent (<span id="rosterAbsentCount">0</span>)</div>
+        <div id="rosterAbsentList" class="card-list"></div>
+      </div>
     </div>
   </div>
 
   <div id="matchLogModal" class="hidden"
-    style="position: fixed; inset: 0; background: #f1f5f9; z-index: 60; overflow-y: auto; padding: 1rem;">
+    style="position: fixed; inset: 0; background: #f1f5f9; z-index: 60; overflow-y: auto; padding: 0.75rem;">
     <div class="max-w-md" style="margin: 0 auto;">
-      <div class="flex justify-between items-start mb-4 border-b-2 border-slate-300 pb-4 mt-2">
-        <div>
-          <h2 class="font-black text-3xl text-slate-900">Match Report</h2>
-          <div id="logDateTime" class="text-sm font-bold text-slate-500 mt-1">Oct 3, 2026 10:00 AM</div>
+      <!-- 1. Unified ESPN-Style Scoreboard Header Card -->
+      <div class="mb-3 bg-white rounded-xl shadow-sm border border-slate-200" style="padding: 0.85rem;">
+        <div class="flex justify-between items-center pb-2 border-b border-slate-200" style="margin-bottom: 0.5rem;">
+          <div>
+            <h2 class="font-black text-2xl text-slate-900" style="line-height:1.1; margin:0;">Match Report</h2>
+            <div id="logDateTime" class="text-xs font-bold text-slate-500 mt-1">Oct 3, 2026 10:00 AM</div>
+          </div>
+          <div class="font-black text-2xl bg-slate-900 text-white rounded-md shadow-sm font-mono-nums" id="logScore" style="padding: 0.35rem 0.75rem;">
+            0 - 0
+          </div>
         </div>
-        <div class="font-black text-3xl px-4 py-2 bg-slate-900 text-white rounded-lg shadow-md" id="logScore">
-          0 - 0
-        </div>
-      </div>
-
-      <div id="logHeadline" class="mb-4 px-4 py-3 rounded-xl font-black text-sm text-white bg-slate-900 shadow-sm"></div>
-
-      <div class="mb-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <h3 class="text-sm font-black uppercase text-slate-400 mb-3">Box Score</h3>
+        <div id="logHeadline" class="rounded-md font-black text-xs text-white bg-slate-900" style="padding: 0.5rem 0.75rem; margin-bottom: 0.6rem;"></div>
         <div id="logBoxScore"></div>
       </div>
 
-      <div class="mb-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <div class="flex justify-between items-center mb-3">
-          <h3 class="text-sm font-black uppercase text-slate-400">Scoring Breakdown</h3>
+      <!-- 2. NBA/ESPN Player Scorecard Grid + Collapsible Play-by-Play -->
+      <div class="mb-3 bg-white rounded-xl shadow-sm border border-slate-200" style="padding: 0.85rem;">
+        <div class="flex justify-between items-center mb-2">
+          <h3 class="text-xs font-black uppercase text-slate-400" style="margin:0;">Player Box Score</h3>
           <span id="logShotMixSummary" class="text-xs font-black text-slate-500"></span>
         </div>
-        <div id="logTopScorers" class="flex flex-col gap-2 text-base font-black"></div>
+        <div id="logTopScorers"></div>
+        <div style="margin-top: 0.65rem; padding-top: 0.5rem; border-top: 1px solid #e2e8f0;">
+          <button data-action="togglePlayByPlay" id="togglePlayByPlayBtn"
+            class="w-full text-xs font-black flex justify-between items-center rounded-md bg-slate-100 border border-slate-200"
+            style="cursor:pointer; padding: 0.4rem 0.6rem; color:#475569; text-align:left;">
+            <span id="togglePlayByPlayLabel">📋 Scoring Play-by-Play (0 plays)</span>
+            <span id="togglePlayByPlayChevron">▸</span>
+          </button>
+          <div id="logTimeline" class="hidden mt-2 flex-col text-xs font-bold" style="gap: 0.35rem;"></div>
+        </div>
       </div>
 
-      <div class="mb-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <h3 class="text-sm font-black uppercase text-slate-400 mb-3">Hustle & Impact Awards</h3>
+      <!-- 3. Hustle & Impact Awards -->
+      <div class="mb-3 bg-white rounded-xl shadow-sm border border-slate-200" style="padding: 0.85rem;">
+        <h3 class="text-xs font-black uppercase text-slate-400 mb-2" style="margin-top:0;">Hustle & Impact Awards</h3>
         <div id="logImpactAwards" class="grid grid-cols-2 gap-2"></div>
       </div>
 
+      <!-- 4. Playtime Summary (Unchanged) -->
       <div class="mb-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <h3 class="text-sm font-black uppercase text-slate-400 mb-3">Scoring Timeline</h3>
-        <div id="logTimeline" class="flex flex-wrap gap-2 text-sm font-bold"></div>
-      </div>
-
-      <div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <h3 class="text-sm font-black uppercase text-slate-400 mb-3">Playtime Summary</h3>
+        <h3 class="text-sm font-black uppercase text-slate-400 mb-3" style="margin-top:0;">Playtime Summary</h3>
         <div id="logPlaytime" class="flex flex-col gap-3 text-sm font-bold text-slate-800"></div>
       </div>
 
@@ -913,6 +1044,7 @@
           storageKey: 'SSM_V3',
           appTitle: 'Soccer Sub Manager',
           surfaceLabel: 'On Field',
+          surfaceNoun: 'Field',
           sizeLabel: 'Field Size',
           periodLabel: 'Period',
           periodShort: 'P',
@@ -936,6 +1068,7 @@
           storageKey: 'CGM_BASKETBALL_V1',
           appTitle: 'Basketball Sub Manager',
           surfaceLabel: 'On Court',
+          surfaceNoun: 'Court',
           sizeLabel: 'Court Size',
           periodLabel: 'Quarter',
           periodShort: 'Q',
@@ -970,6 +1103,7 @@
           match: {
             period: 1,
             clock: { running: false, startedAt: null, elapsedMs: 0 },
+            completedPeriodsMs: 0,
             players: {},
             pinnedId: null,
             skipIds: [],
@@ -1017,13 +1151,23 @@
         state.sport = sport;
         if (state.match && state.match.players) {
           for (const pid in state.match.players) {
-            if (!Array.isArray(state.match.players[pid].badges)) {
-              state.match.players[pid].badges = [];
+            const p = state.match.players[pid];
+            if (!Array.isArray(p.badges)) {
+              p.badges = [];
             }
-            state.match.players[pid].fouledOut = Boolean(state.match.players[pid].fouledOut);
+            p.fouledOut = Boolean(p.fouledOut);
+            p.absent = Boolean(p.absent);
+            if (p.arrivedAtMs === undefined) p.arrivedAtMs = p.absent ? null : 0;
+            if (p.firstArrivedAtMs === undefined) p.firstArrivedAtMs = p.absent ? null : p.arrivedAtMs;
+            if (p.departedAtMs === undefined) p.departedAtMs = null;
+            if (typeof p.presentMs !== 'number') p.presentMs = 0;
           }
         }
         if (state.match) {
+          if (typeof state.match.completedPeriodsMs !== 'number') {
+            const periodMins = (state.settings && state.settings.periodMinutes) || 8;
+            state.match.completedPeriodsMs = (Math.max(1, state.match.period || 1) - 1) * periodMins * 60 * 1000;
+          }
           if (state.match.lastSubOutId === undefined) {
             state.match.lastSubOutId = null;
           }
@@ -1044,6 +1188,51 @@
         }
         return Math.min(periodMs, state.match.clock.elapsedMs + runningMs);
       },
+      hasMatchActivity: function (state) {
+        if (!state || !state.match) return false;
+        const m = state.match;
+        if (m.period > 1) return true;
+        if (m.clock && (m.clock.elapsedMs > 0 || m.clock.running)) return true;
+        if (m.score && (m.score.us > 0 || m.score.them > 0)) return true;
+        if (Array.isArray(m.events) && m.events.length > 0) return true;
+        if (m.players) {
+          for (const pid in m.players) {
+            const p = m.players[pid];
+            if (!p) continue;
+            if (Array.isArray(p.badges) && p.badges.length > 0) return true;
+            if (Array.isArray(p.periodMs) && p.periodMs.some(ms => ms > 0)) return true;
+          }
+        }
+        return false;
+      },
+      isMatchComplete: function (state, now) {
+        if (!state || !state.match || !state.settings) return false;
+        const pMs = state.settings.periodMinutes * 60 * 1000;
+        return state.match.period >= state.settings.periodCount && this.clockMs(state, now) >= pMs;
+      },
+      matchElapsedMs: function (state, now) {
+        const completed = typeof state.match.completedPeriodsMs === 'number'
+          ? state.match.completedPeriodsMs
+          : (Math.max(1, state.match.period || 1) - 1) * state.settings.periodMinutes * 60 * 1000;
+        return completed + this.clockMs(state, now);
+      },
+      playerPresentMs: function (state, id, now) {
+        const p = state.match.players[id];
+        if (!p) return 0;
+        const mMs = this.matchElapsedMs(state, now);
+        const arrivedAt = p.arrivedAtMs === undefined ? (p.absent ? null : 0) : p.arrivedAtMs;
+        const activeStint = (!p.absent && arrivedAt !== null) ? Math.max(0, mMs - arrivedAt) : 0;
+        return (p.presentMs || 0) + activeStint;
+      },
+      playerHasMatchData: function (state, id, now) {
+        const p = state.match.players[id];
+        if (!p) return false;
+        const cMs = this.clockMs(state, now);
+        if (this._rawTimes(state, id, cMs).totalMs > 0) return true;
+        if (Array.isArray(p.badges) && p.badges.length > 0) return true;
+        if (Array.isArray(state.match.events) && state.match.events.some(e => e.playerId === id)) return true;
+        return false;
+      },
       _rawTimes: function (state, id, cMs) {
         const p = state.match.players[id];
         if (!p) return { periodMs: 0, totalMs: 0, shiftMs: 0, satMs: 0 };
@@ -1055,29 +1244,39 @@
       },
       times: function (state, id, now) {
         const p = state.match.players[id];
-        if (!p) return { periodMs: 0, totalMs: 0, shiftMs: 0, satMs: 0, fairDeltaMs: 0 };
+        if (!p) return { periodMs: 0, totalMs: 0, shiftMs: 0, satMs: 0, presentMs: 0, targetMs: 0, fairDeltaMs: 0 };
         const cMs = this.clockMs(state, now);
         const own = this._rawTimes(state, id, cMs);
+        const ownPresentMs = this.playerPresentMs(state, id, now);
 
-        let sumTotal = 0;
-        let count = 0;
+        let totalActivePlayedMs = 0;
+        let totalActivePresentMs = 0;
+        let activeCount = 0;
         if (Array.isArray(state.roster)) {
           for (let i = 0; i < state.roster.length; i++) {
             const rId = state.roster[i].id;
             const rp = state.match.players[rId];
-            if (!rp || rp.resting || rp.fouledOut) continue;
-            sumTotal += this._rawTimes(state, rId, cMs).totalMs;
-            count++;
+            if (!rp || rp.absent || rp.resting || rp.fouledOut) continue;
+            totalActivePlayedMs += this._rawTimes(state, rId, cMs).totalMs;
+            totalActivePresentMs += this.playerPresentMs(state, rId, now);
+            activeCount++;
           }
         }
-        const avgTotal = count > 0 ? sumTotal / count : own.totalMs;
-        const fairDeltaMs = own.totalMs - avgTotal;
+        let targetMs = own.totalMs;
+        if (totalActivePresentMs > 0) {
+          targetMs = Math.round(totalActivePlayedMs * (ownPresentMs / totalActivePresentMs));
+        } else if (activeCount > 0) {
+          targetMs = Math.round(totalActivePlayedMs / activeCount);
+        }
+        const fairDeltaMs = own.totalMs - targetMs;
 
         return {
           periodMs: own.periodMs,
           totalMs: own.totalMs,
           shiftMs: own.shiftMs,
           satMs: own.satMs,
+          presentMs: ownPresentMs,
+          targetMs,
           fairDeltaMs
         };
       },
@@ -1106,40 +1305,30 @@
         let inCandidates = [];
         let outCandidates = [];
 
-        let sumTotal = 0;
-        let count = 0;
-        for (let r of state.roster) {
-          if (!state.match.players[r.id]) continue;
-          let t = this.times(state, r.id, now);
-          sumTotal += t.totalMs;
-          count++;
-        }
-        const avgTotal = count > 0 ? sumTotal / count : 0;
-
-        for (let r of state.roster) {
-          let t = this.times(state, r.id, now);
-          t.fairDeltaMs = t.totalMs - avgTotal;
-          let p = state.match.players[r.id];
+        for (let i = 0; i < state.roster.length; i++) {
+          const r = state.roster[i];
+          const p = state.match.players[r.id];
           if (!p) continue;
+          const t = this.times(state, r.id, now);
 
           if (!p.onField) {
-            if (!p.resting && !p.fouledOut && !state.match.skipIds.includes(r.id)) {
-              inCandidates.push({ id: r.id, t, p, index: state.roster.indexOf(r) });
+            if (!p.absent && !p.resting && !p.fouledOut && !state.match.skipIds.includes(r.id)) {
+              inCandidates.push({ id: r.id, t, p, index: i });
             }
           } else {
-            outCandidates.push({ id: r.id, t, p, index: state.roster.indexOf(r) });
+            outCandidates.push({ id: r.id, t, p, index: i });
           }
         }
 
         const nonRestingBenchCount = state.roster.filter(r => {
           let p = state.match.players[r.id];
-          return p && !p.onField && !p.resting && !p.fouledOut;
+          return p && !p.onField && !p.absent && !p.resting && !p.fouledOut;
         }).length;
 
         if (nonRestingBenchCount === 0) {
           const anyBench = state.roster.some(r => {
             let p = state.match.players[r.id];
-            return p && !p.onField;
+            return p && !p.onField && !p.absent;
           });
           if (!anyBench) return { outId: null, inId: null, status: 'no-bench' };
           return { outId: null, inId: null, status: 'none-eligible' };
@@ -1154,9 +1343,11 @@
           if (b.id === state.match.pinnedId && a.id !== state.match.pinnedId) return 1;
           if (a.id === state.match.lastSubOutId && b.id !== state.match.lastSubOutId) return 1;
           if (b.id === state.match.lastSubOutId && a.id !== state.match.lastSubOutId) return -1;
-          if (a.t.totalMs !== b.t.totalMs) return a.t.totalMs - b.t.totalMs;
+          const dFair = Math.round(a.t.fairDeltaMs) - Math.round(b.t.fairDeltaMs);
+          if (dFair !== 0) return dFair;
           if (a.t.periodMs !== b.t.periodMs) return a.t.periodMs - b.t.periodMs;
           if (a.t.satMs !== b.t.satMs) return b.t.satMs - a.t.satMs;
+          if (a.t.totalMs !== b.t.totalMs) return a.t.totalMs - b.t.totalMs;
           return a.index - b.index;
         });
 
@@ -1165,8 +1356,10 @@
           const bShort = b.t.shiftMs < MIN_SHIFT_MS;
           if (aShort && !bShort) return 1;
           if (!aShort && bShort) return -1;
-          if (a.t.totalMs !== b.t.totalMs) return b.t.totalMs - a.t.totalMs;
+          const dFair = Math.round(b.t.fairDeltaMs) - Math.round(a.t.fairDeltaMs);
+          if (dFair !== 0) return dFair;
           if (a.t.shiftMs !== b.t.shiftMs) return b.t.shiftMs - a.t.shiftMs;
+          if (a.t.totalMs !== b.t.totalMs) return b.t.totalMs - a.t.totalMs;
           return a.index - b.index;
         });
 
@@ -1185,7 +1378,7 @@
           if (!p) continue;
           const t = this.times(state, r.id, now);
           if (!p.onField) {
-            if (!p.resting && !p.fouledOut && !state.match.skipIds.includes(r.id)) {
+            if (!p.absent && !p.resting && !p.fouledOut && !state.match.skipIds.includes(r.id)) {
               inCandidates.push({ id: r.id, t, p, index: i });
             }
           } else {
@@ -1195,13 +1388,13 @@
 
         const eligibleBenchCount = state.roster.filter(r => {
           const p = state.match.players[r.id];
-          return p && !p.onField && !p.resting && !p.fouledOut;
+          return p && !p.onField && !p.absent && !p.resting && !p.fouledOut;
         }).length;
 
         if (eligibleBenchCount === 0) {
           const anyBench = state.roster.some(r => {
             const p = state.match.players[r.id];
-            return p && !p.onField;
+            return p && !p.onField && !p.absent;
           });
           if (!anyBench) return { outIds: [], inIds: [], pairs: [], status: 'no-bench' };
           return { outIds: [], inIds: [], pairs: [], status: 'none-eligible' };
@@ -1214,15 +1407,19 @@
         inCandidates.sort((a, b) => {
           if (a.id === state.match.pinnedId && b.id !== state.match.pinnedId) return -1;
           if (b.id === state.match.pinnedId && a.id !== state.match.pinnedId) return 1;
-          if (a.t.totalMs !== b.t.totalMs) return a.t.totalMs - b.t.totalMs;
+          const dFair = Math.round(a.t.fairDeltaMs) - Math.round(b.t.fairDeltaMs);
+          if (dFair !== 0) return dFair;
           if (a.t.periodMs !== b.t.periodMs) return a.t.periodMs - b.t.periodMs;
           if (a.t.satMs !== b.t.satMs) return b.t.satMs - a.t.satMs;
+          if (a.t.totalMs !== b.t.totalMs) return a.t.totalMs - b.t.totalMs;
           return a.index - b.index;
         });
 
         outCandidates.sort((a, b) => {
-          if (a.t.totalMs !== b.t.totalMs) return b.t.totalMs - a.t.totalMs;
+          const dFair = Math.round(b.t.fairDeltaMs) - Math.round(a.t.fairDeltaMs);
+          if (dFair !== 0) return dFair;
           if (a.t.shiftMs !== b.t.shiftMs) return b.t.shiftMs - a.t.shiftMs;
+          if (a.t.totalMs !== b.t.totalMs) return b.t.totalMs - a.t.totalMs;
           return a.index - b.index;
         });
 
@@ -1242,7 +1439,7 @@
 
         const outP = newState.match.players[outId];
         const inP = newState.match.players[inId];
-        if (!outP || !inP || !outP.onField || inP.onField) return state; // Invalid
+        if (!outP || !inP || !outP.onField || inP.onField || inP.absent) return state; // Invalid
 
         const cMs = this.clockMs(newState, now);
         newState.match.undo = {
@@ -1283,7 +1480,7 @@
         for (let i = 0; i < outIds.length; i++) {
           const outP = newState.match.players[outIds[i]];
           const inP = newState.match.players[inIds[i]];
-          if (!outP || !inP || !outP.onField || inP.onField) return state;
+          if (!outP || !inP || !outP.onField || inP.onField || inP.absent) return state;
         }
 
         const cMs = this.clockMs(newState, now);
@@ -1375,7 +1572,7 @@
 
         const outP = newState.match.players[outId];
         const inP = newState.match.players[inId];
-        if (!outP || !inP || !outP.onField || inP.onField) return state;
+        if (!outP || !inP || !outP.onField || inP.onField || inP.absent) return state;
 
         const cMs = this.clockMs(newState, now);
         const outName = state.roster.find(r => r.id === outId)?.name || 'Out';
@@ -1447,6 +1644,9 @@
           }
           p.stintStartMs = 0;
         }
+        newState.match.completedPeriodsMs = (typeof newState.match.completedPeriodsMs === 'number'
+          ? newState.match.completedPeriodsMs
+          : (Math.max(1, newState.match.period - 1) * newState.settings.periodMinutes * 60 * 1000)) + cMs;
         newState.match.period++;
         newState.match.clock.elapsedMs = 0;
         newState.match.skipIds = [];
@@ -1458,16 +1658,20 @@
         newState.match.undo = {
           label: `Reset Match`,
           keepClock: false,
+          roster: JSON.parse(JSON.stringify(state.roster)),
+          starterIds: JSON.parse(JSON.stringify(state.starterIds || [])),
           match: JSON.parse(JSON.stringify(state.match))
         };
         newState.match.period = 1;
         newState.match.clock.elapsedMs = 0;
+        newState.match.completedPeriodsMs = 0;
         newState.match.skipIds = [];
         newState.match.pinnedId = null;
         newState.match.lastSubOutId = null;
         newState.match.midSubDoneForPeriod = 0;
         newState.match.score = { us: 0, them: 0 };
         newState.match.events = [];
+        newState.match.players = {};
         for (let r of newState.roster) {
           const onField = newState.starterIds.includes(r.id);
           newState.match.players[r.id] = {
@@ -1476,6 +1680,11 @@
             periodMs: Array(newState.settings.periodCount).fill(0),
             resting: false,
             fouledOut: false,
+            absent: false,
+            arrivedAtMs: 0,
+            firstArrivedAtMs: 0,
+            departedAtMs: null,
+            presentMs: 0,
             badges: []
           };
         }
@@ -1523,8 +1732,11 @@
         let newState = JSON.parse(JSON.stringify(state));
         const currentElapsedMs = this.clockMs(state, now);
         const isCurrentlyRunning = Boolean(state.match.clock.running);
-        const oldMatch = newState.match.undo.match;
-        const keepClock = newState.match.undo.keepClock;
+        const undoData = newState.match.undo;
+        const oldMatch = undoData.match;
+        const keepClock = undoData.keepClock;
+        if (Array.isArray(undoData.roster)) newState.roster = undoData.roster;
+        if (Array.isArray(undoData.starterIds)) newState.starterIds = undoData.starterIds;
         newState.match = oldMatch;
         if (keepClock) {
           newState.match.clock = {
@@ -1535,48 +1747,297 @@
         }
         return newState;
       },
+      _countOnField: function (state) {
+        let c = 0;
+        for (const r of state.roster) {
+          const p = state.match.players[r.id];
+          if (p && p.onField && !p.absent) c++;
+        }
+        return c;
+      },
+      _createPlayerState: function (periodCount, opts = {}) {
+        const absent = Boolean(opts.absent);
+        const arrivedAtMs = absent ? null : (opts.arrivedAtMs ?? 0);
+        const firstArrivedAtMs = absent ? null : (opts.firstArrivedAtMs ?? arrivedAtMs);
+        return {
+          onField: Boolean(opts.onField),
+          stintStartMs: opts.stintStartMs ?? 0,
+          periodMs: Array(periodCount).fill(0),
+          resting: false,
+          fouledOut: false,
+          absent,
+          arrivedAtMs,
+          firstArrivedAtMs,
+          departedAtMs: null,
+          presentMs: 0,
+          badges: []
+        };
+      },
+      addPlayerLive: function (state, name, opts = {}, now) {
+        const trimmed = String(name || '').trim();
+        const errors = [];
+        if (state.roster.length >= 18) errors.push('Roster limit reached (max 18 players)');
+        if (trimmed.length < 1 || trimmed.length > 20) errors.push('Player name must be 1–20 characters');
+        if (state.roster.some(r => r.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+          errors.push(`Duplicate name: ${trimmed}`);
+        }
+        if (errors.length > 0) return { ok: false, state, errors };
+
+        const newState = JSON.parse(JSON.stringify(state));
+        const cMs = this.clockMs(state, now);
+        const mMs = this.matchElapsedMs(state, now);
+        const absent = Boolean(opts && opts.absent);
+        const onFieldCount = this._countOnField(state);
+        const putOnField = !absent && Boolean(opts && opts.putOnField) && onFieldCount < state.settings.fieldSize;
+        const id = this.generateId();
+        const sportCfg = this.getSportConfig(state);
+
+        newState.match.undo = {
+          label: `Added ${trimmed}${putOnField ? ` → ${sportCfg.surfaceNoun}` : ''}`,
+          keepClock: true,
+          roster: JSON.parse(JSON.stringify(state.roster)),
+          starterIds: JSON.parse(JSON.stringify(state.starterIds || [])),
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+
+        newState.roster.push({ id, name: trimmed });
+        if (!this.hasMatchActivity(state) && putOnField && !newState.starterIds.includes(id)) {
+          newState.starterIds.push(id);
+        }
+        newState.match.players[id] = this._createPlayerState(newState.settings.periodCount, {
+          onField: putOnField,
+          stintStartMs: cMs,
+          absent,
+          arrivedAtMs: mMs,
+          firstArrivedAtMs: mMs
+        });
+        return { ok: true, state: newState, playerId: id, errors: [] };
+      },
+      markPlayerArrived: function (state, playerId, opts = {}, now) {
+        const p = state.match.players[playerId];
+        const r = state.roster.find(x => x.id === playerId);
+        if (!p || !r || !p.absent) return state;
+
+        const newState = JSON.parse(JSON.stringify(state));
+        const cMs = this.clockMs(state, now);
+        const mMs = this.matchElapsedMs(state, now);
+        const onFieldCount = this._countOnField(state);
+        const putOnField = !p.fouledOut && Boolean(opts && opts.putOnField) && onFieldCount < state.settings.fieldSize;
+        const sportCfg = this.getSportConfig(state);
+
+        newState.match.undo = {
+          label: `${r.name} Arrived${putOnField ? ` → ${sportCfg.surfaceNoun}` : ''}`,
+          keepClock: true,
+          starterIds: JSON.parse(JSON.stringify(state.starterIds || [])),
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+
+        const target = newState.match.players[playerId];
+        target.absent = false;
+        target.arrivedAtMs = mMs;
+        if (target.firstArrivedAtMs === null || target.firstArrivedAtMs === undefined) {
+          target.firstArrivedAtMs = mMs;
+        }
+        target.departedAtMs = null;
+        target.resting = false;
+        target.stintStartMs = cMs;
+        target.onField = putOnField;
+
+        if (!this.hasMatchActivity(state) && putOnField && !newState.starterIds.includes(playerId)) {
+          newState.starterIds.push(playerId);
+        }
+        return newState;
+      },
+      markPlayerAbsent: function (state, playerId, subInId = null, now) {
+        const p = state.match.players[playerId];
+        const r = state.roster.find(x => x.id === playerId);
+        if (!p || !r || p.absent) return state;
+
+        const newState = JSON.parse(JSON.stringify(state));
+        const cMs = this.clockMs(state, now);
+        const mMs = this.matchElapsedMs(state, now);
+        const activeMatch = this.hasMatchActivity(state);
+        const subR = subInId ? state.roster.find(x => x.id === subInId) : null;
+
+        newState.match.undo = {
+          label: activeMatch
+            ? `${r.name} Left Early${subR ? ` (⇄ ${subR.name})` : ''}`
+            : `${r.name} Marked Absent`,
+          keepClock: true,
+          starterIds: JSON.parse(JSON.stringify(state.starterIds || [])),
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+
+        const target = newState.match.players[playerId];
+        const arrivedAt = target.arrivedAtMs === undefined ? 0 : target.arrivedAtMs;
+        if (arrivedAt !== null) {
+          target.presentMs = (target.presentMs || 0) + Math.max(0, mMs - arrivedAt);
+        }
+        target.absent = true;
+        target.arrivedAtMs = null;
+        target.resting = false;
+        target.departedAtMs = activeMatch ? mMs : null;
+        if (!activeMatch || target.presentMs === 0) {
+          target.firstArrivedAtMs = null;
+        }
+
+        if (target.onField) {
+          target.periodMs[newState.match.period - 1] =
+            (target.periodMs[newState.match.period - 1] || 0) + (cMs - target.stintStartMs);
+          target.onField = false;
+          target.stintStartMs = cMs;
+          if (!activeMatch) {
+            newState.starterIds = (newState.starterIds || []).filter(id => id !== playerId);
+          }
+          if (subInId) {
+            const inP = newState.match.players[subInId];
+            if (inP && !inP.onField && !inP.absent && !inP.fouledOut) {
+              inP.onField = true;
+              inP.stintStartMs = cMs;
+              inP.resting = false;
+              if (!activeMatch && !newState.starterIds.includes(subInId)) {
+                newState.starterIds.push(subInId);
+              }
+              if (newState.match.pinnedId === subInId) newState.match.pinnedId = null;
+              newState.match.skipIds = [];
+            }
+          }
+        }
+        if (newState.match.pinnedId === playerId) newState.match.pinnedId = null;
+        newState.match.skipIds = (newState.match.skipIds || []).filter(id => id !== playerId);
+        return newState;
+      },
+      enterField: function (state, playerId, now) {
+        const p = state.match.players[playerId];
+        const r = state.roster.find(x => x.id === playerId);
+        if (!p || !r || p.onField || p.absent || p.fouledOut) return state;
+        if (this._countOnField(state) >= state.settings.fieldSize) return state;
+
+        const newState = JSON.parse(JSON.stringify(state));
+        const cMs = this.clockMs(state, now);
+        const sportCfg = this.getSportConfig(state);
+
+        newState.match.undo = {
+          label: `${r.name} → ${sportCfg.surfaceNoun}`,
+          keepClock: true,
+          starterIds: JSON.parse(JSON.stringify(state.starterIds || [])),
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+
+        const target = newState.match.players[playerId];
+        target.onField = true;
+        target.stintStartMs = cMs;
+        target.resting = false;
+        if (!this.hasMatchActivity(state) && !newState.starterIds.includes(playerId)) {
+          newState.starterIds.push(playerId);
+        }
+        if (newState.match.pinnedId === playerId) newState.match.pinnedId = null;
+        return newState;
+      },
+      removePlayerFromRoster: function (state, playerId, now) {
+        const r = state.roster.find(x => x.id === playerId);
+        if (!r) return { ok: false, state, reason: 'not-found', errors: ['Player not found'] };
+        if (state.roster.length <= 1) {
+          return { ok: false, state, reason: 'last-player', errors: ['Roster must have at least 1 player.'] };
+        }
+        if (this.playerHasMatchData(state, playerId, now)) {
+          return {
+            ok: false,
+            state,
+            reason: 'has-match-data',
+            errors: [`${r.name} has recorded playtime or stats in this match. Mark them Left Early instead to keep the Match Report intact.`]
+          };
+        }
+
+        const newState = JSON.parse(JSON.stringify(state));
+        newState.match.undo = {
+          label: `Removed ${r.name}`,
+          keepClock: true,
+          roster: JSON.parse(JSON.stringify(state.roster)),
+          starterIds: JSON.parse(JSON.stringify(state.starterIds || [])),
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+        newState.roster = newState.roster.filter(x => x.id !== playerId);
+        newState.starterIds = (newState.starterIds || []).filter(id => id !== playerId);
+        delete newState.match.players[playerId];
+        if (newState.match.pinnedId === playerId) newState.match.pinnedId = null;
+        if (newState.match.lastSubOutId === playerId) newState.match.lastSubOutId = null;
+        newState.match.skipIds = (newState.match.skipIds || []).filter(id => id !== playerId);
+        return { ok: true, state: newState, errors: [] };
+      },
       applySetup: function (state, draft, now) {
         let errors = [];
-        if (draft.fieldSize < 2 || draft.fieldSize > 11) errors.push("Field size must be 2-11");
-        if (draft.periodMinutes < 1 || draft.periodMinutes > 45) errors.push("Period minutes must be 1-45");
+        const fieldSizeInvalid = !Number.isInteger(draft.fieldSize) || draft.fieldSize < 2 || draft.fieldSize > 11;
+        if (fieldSizeInvalid) errors.push("Field size must be 2-11");
+        if (!Number.isInteger(draft.periodMinutes) || draft.periodMinutes < 1 || draft.periodMinutes > 45) errors.push("Period minutes must be 1-45");
         if (draft.periodCount !== 2 && draft.periodCount !== 4) errors.push("Period count must be 2 or 4");
         if (draft.roster.length < 1 || draft.roster.length > 18) errors.push("Roster must have 1-18 players");
         let names = new Set();
-        draft.roster.forEach((r, i) => {
-          let tName = r.name.trim();
-          if (tName.length < 1 || tName.length > 20) errors.push(`Name "${r.name}" must be 1-20 chars`);
-          if (names.has(tName.toLowerCase())) errors.push(`Duplicate name: ${tName}`);
-          names.add(tName.toLowerCase());
-          draft.roster[i].name = tName;
+        const cleanRoster = draft.roster.map(r => ({ id: r.id, name: String(r.name || '').trim() }));
+        cleanRoster.forEach(r => {
+          if (r.name.length < 1 || r.name.length > 20) errors.push(`Name "${r.name}" must be 1-20 chars`);
+          if (names.has(r.name.toLowerCase())) errors.push(`Duplicate name: ${r.name}`);
+          names.add(r.name.toLowerCase());
         });
-        const reqStarters = Math.min(draft.fieldSize, draft.roster.length);
-        if (draft.starterIds.length !== reqStarters) errors.push(`Must select exactly ${reqStarters} starters`);
+
+        const matchActive = this.hasMatchActivity(state);
+        const absentSet = new Set(Array.isArray(draft.absentIds) ? draft.absentIds : []);
+        const uniqueStarters = [...new Set(Array.isArray(draft.starterIds) ? draft.starterIds : [])];
+
+        if (!matchActive && !fieldSizeInvalid) {
+          const presentRoster = cleanRoster.filter(r => !absentSet.has(r.id));
+          const reqStarters = Math.min(draft.fieldSize, presentRoster.length);
+          const validStarters = uniqueStarters.filter(id => presentRoster.some(r => r.id === id));
+          if (validStarters.length !== reqStarters) {
+            errors.push(`Must select exactly ${reqStarters} starters`);
+          }
+        }
 
         if (errors.length > 0) return { ok: false, state, errors };
         let newState = JSON.parse(JSON.stringify(state));
         newState.sport = draft.sport || state.sport || 'soccer';
-        const matchStarted = newState.match.period > 1 || newState.match.clock.elapsedMs > 0 || newState.match.clock.running;
 
-        if (!matchStarted) {
+        if (!matchActive) {
+          const prevUndo = state.match.undo;
           newState.settings.fieldSize = draft.fieldSize;
           newState.settings.periodMinutes = draft.periodMinutes;
           newState.settings.periodCount = draft.periodCount;
-          newState.roster = draft.roster;
-          newState.starterIds = draft.starterIds;
-          newState = this.resetMatch(newState, now);
-          newState.match.undo = null;
+          newState.roster = cleanRoster;
+          const presentIds = new Set(cleanRoster.filter(r => !absentSet.has(r.id)).map(r => r.id));
+          newState.starterIds = uniqueStarters.filter(id => presentIds.has(id));
+
+          const nextPlayers = {};
+          for (const r of cleanRoster) {
+            const isAbsent = absentSet.has(r.id);
+            const isStarter = !isAbsent && newState.starterIds.includes(r.id);
+            nextPlayers[r.id] = this._createPlayerState(newState.settings.periodCount, {
+              onField: isStarter,
+              stintStartMs: 0,
+              absent: isAbsent,
+              arrivedAtMs: 0,
+              firstArrivedAtMs: 0
+            });
+          }
+          newState.match.players = nextPlayers;
+          newState.match.completedPeriodsMs = 0;
+          newState.match.skipIds = [];
+          newState.match.pinnedId = null;
+          newState.match.lastSubOutId = null;
+          // Preserve Reset Match undo if present, otherwise avoid creating stale undo on first-time setup
+          newState.match.undo = (prevUndo && prevUndo.label === 'Reset Match') ? prevUndo : null;
         } else {
-          for (let r of draft.roster) {
+          const cMs = this.clockMs(newState, now);
+          const mMs = this.matchElapsedMs(newState, now);
+          for (const r of cleanRoster) {
             if (!newState.roster.find(ex => ex.id === r.id)) {
               newState.roster.push(r);
-              newState.match.players[r.id] = {
+              newState.match.players[r.id] = this._createPlayerState(newState.settings.periodCount, {
                 onField: false,
-                stintStartMs: this.clockMs(newState, now),
-                periodMs: Array(newState.settings.periodCount).fill(0),
-                resting: false,
-                fouledOut: false,
-                badges: []
-              };
+                stintStartMs: cMs,
+                absent: false,
+                arrivedAtMs: mMs,
+                firstArrivedAtMs: mMs
+              });
             }
           }
         }
@@ -1638,12 +2099,28 @@
         const sportCfg = this.getSportConfig(state);
         const isBball = sportCfg.id === 'basketball';
         const periodCount = state.settings.periodCount || 4;
-        const activePlayers = state.roster.filter(r => state.match.players[r.id] && !state.match.players[r.id].resting && !state.match.players[r.id].fouledOut);
-        const elapsedMs = this.clockMs(state, now);
-        const totalPeriodElapsedMs = (state.match.period - 1) * state.settings.periodMinutes * 60 * 1000 + elapsedMs;
+        const cMs = this.clockMs(state, now);
+        const matchElapsed = this.matchElapsedMs(state, now);
 
-        const totalFieldMs = totalPeriodElapsedMs * state.settings.fieldSize;
-        const targetMs = activePlayers.length > 0 ? Math.round(totalFieldMs / activePlayers.length) : 0;
+        const snapshots = state.roster.map(r => {
+          const p = state.match.players[r.id] || { periodMs: [], badges: [] };
+          const totalMs = this._rawTimes(state, r.id, cMs).totalMs;
+          const presentMs = this.playerPresentMs(state, r.id, now);
+          return { r, p, totalMs, presentMs };
+        });
+
+        let totalPlayedMs = 0;
+        let totalPresentMs = 0;
+        for (const snap of snapshots) {
+          if (!snap.p.resting && !snap.p.fouledOut && (snap.presentMs > 0 || snap.totalMs > 0)) {
+            totalPlayedMs += snap.totalMs;
+            totalPresentMs += snap.presentMs;
+          }
+        }
+
+        const targetMs = totalPresentMs > 0 && matchElapsed > 0
+          ? Math.round(totalPlayedMs * (matchElapsed / totalPresentMs))
+          : 0;
 
         let totalBadges = 0;
         let maxPlayerMs = 0;
@@ -1669,10 +2146,7 @@
         const totalUs = usByPeriod.reduce((a, b) => a + b, 0) || (state.match.score?.us || 0);
         const totalThem = themByPeriod.reduce((a, b) => a + b, 0) || (state.match.score?.them || 0);
 
-        const playerMetrics = state.roster.map(r => {
-          const p = state.match.players[r.id] || { periodMs: [], badges: [] };
-          const t = this.times(state, r.id, now);
-          const totalMs = t.totalMs;
+        const playerMetrics = snapshots.map(({ r, p, totalMs, presentMs }) => {
           if (totalMs > maxPlayerMs) maxPlayerMs = totalMs;
 
           const badgeCounts = { hustle: 0, save: 0, pass: 0, kick: 0, teammate: 0, defense: 0, rebound: 0, shot: 0 };
@@ -1682,30 +2156,48 @@
           });
 
           const shotMix = { pt1: 0, pt2: 0, pt3: 0 };
+          const pointsByPeriod = Array(periodCount).fill(0);
           let pointsScored = 0;
           (state.match.events || []).forEach(evt => {
             if (evt.type === 'goal_us' && evt.playerId === r.id) {
               const pts = evt.points || 1;
+              const pIdx = Math.min(periodCount - 1, Math.max(0, (evt.period || 1) - 1));
               pointsScored += pts;
+              pointsByPeriod[pIdx] += pts;
               if (pts === 3) shotMix.pt3++;
               else if (pts === 2) shotMix.pt2++;
               else shotMix.pt1++;
             }
           });
 
-          const diff = totalMs - targetMs;
-          let fairnessStatus = 'equal';
-          if (diff > 90000) fairnessStatus = 'over';
-          else if (diff < -90000) fairnessStatus = 'under';
+          const absentAllGame = presentMs === 0 && totalMs === 0 && Boolean(p.absent);
+          const firstArr = p.firstArrivedAtMs === undefined ? (p.absent ? null : 0) : p.firstArrivedAtMs;
+          const arrivedLate = !absentAllGame && firstArr !== null && firstArr > 0;
+          const leftEarly = !absentAllGame && Boolean(p.absent) && p.departedAtMs !== null && p.departedAtMs !== undefined;
+          const playerTargetMs = absentAllGame
+            ? 0
+            : (totalPresentMs > 0 ? Math.round(totalPlayedMs * (presentMs / totalPresentMs)) : 0);
+          const diff = absentAllGame ? 0 : (totalMs - playerTargetMs);
+          let fairnessStatus = absentAllGame ? 'absent' : 'equal';
+          if (!absentAllGame) {
+            if (diff > 90000) fairnessStatus = 'over';
+            else if (diff < -90000) fairnessStatus = 'under';
+          }
 
           return {
             id: r.id,
             name: r.name,
             totalMs,
+            presentMs,
+            targetMs: playerTargetMs,
             targetDeltaMs: diff,
             fairnessStatus,
+            absentAllGame,
+            arrivedLate,
+            leftEarly,
             fouledOut: Boolean(p.fouledOut),
             pointsScored,
+            pointsByPeriod,
             shotMix,
             badgeCounts,
             badges: p.badges || []
@@ -1768,6 +2260,32 @@
           headline = `💪 Great Team Effort! ${scorerCount} scorer${scorerCount === 1 ? '' : 's'} & ${totalBadges} sportsmanship badges earned with equal play time!`;
         }
 
+        const sortedEvents = [...(state.match.events || [])].sort((a, b) => {
+          if (a.period !== b.period) return a.period - b.period;
+          return a.clockMs - b.clockMs;
+        });
+        let runningUs = 0;
+        let runningThem = 0;
+        const playByPlay = sortedEvents.map(evt => {
+          const pts = evt.points || 1;
+          if (evt.type === 'goal_us') runningUs += pts;
+          else if (evt.type === 'goal_them') runningThem += pts;
+          const playerName = evt.type === 'goal_us'
+            ? (state.roster.find(r => r.id === evt.playerId)?.name || 'Unknown')
+            : 'Opponent';
+          return {
+            id: evt.id,
+            type: evt.type,
+            period: evt.period || 1,
+            clockMs: evt.clockMs || 0,
+            points: pts,
+            playerId: evt.playerId || null,
+            playerName,
+            runningUs,
+            runningThem
+          };
+        });
+
         return {
           targetMs,
           totalBadges,
@@ -1781,6 +2299,7 @@
           teamShotMix,
           headline,
           impactAwards,
+          playByPlay,
           players: playerMetrics
         };
       }
@@ -1795,6 +2314,52 @@
     let wakeLock = null;
     let activeBadgeDrawerPid = null;
     let lastMidSubStatus = null;
+    let isPlayByPlayOpen = false;
+    let isNotHereOpen = false;
+
+    function escHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function createEl(tag, props = {}, children = []) {
+      const node = document.createElement(tag);
+      for (const [k, v] of Object.entries(props)) {
+        if (k === 'className') node.className = v;
+        else if (k === 'textContent') node.textContent = v;
+        else if (k === 'disabled') node.disabled = Boolean(v);
+        else if (k === 'style' && typeof v === 'object') Object.assign(node.style, v);
+        else if (k === 'dataset' && typeof v === 'object') {
+          for (const [dk, dv] of Object.entries(v)) {
+            if (dv !== undefined && dv !== null) node.dataset[dk] = String(dv);
+          }
+        } else if (v !== undefined && v !== null) {
+          node.setAttribute(k, String(v));
+        }
+      }
+      for (const child of children) {
+        if (child === null || child === undefined) continue;
+        node.appendChild(typeof child === 'string' ? document.createTextNode(child) : child);
+      }
+      return node;
+    }
+
+    function showActionModal(title, msg, buttons) {
+      document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalMessage').textContent = msg;
+      const wrap = document.getElementById('modalButtons');
+      wrap.className = buttons.length > 2 ? 'flex-col gap-2' : 'flex justify-between gap-2';
+      wrap.replaceChildren(...buttons.map(b => createEl('button', {
+        className: `sun-btn ${buttons.length > 2 ? 'w-full ' : ''}${b.className || ''}`.trim(),
+        textContent: b.label,
+        dataset: b.dataset || {}
+      })));
+      document.getElementById('modalOverlay').classList.remove('hidden');
+    }
 
     // Save initial HTML immediately before any render
     const APP_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
@@ -1857,16 +2422,50 @@
       }
     }
 
-    function switchSport(targetSport) {
+    function initSetupDraft() {
+      draft = JSON.parse(JSON.stringify(state));
+      draft.starterIds = draft.starterIds || [];
+      draft.absentIds = state.roster.filter(r => state.match.players[r.id]?.absent).map(r => r.id);
+      const input = document.getElementById('draftPlayerName');
+      if (input) input.value = '';
+    }
+
+    function executeSwitchSport(targetSport) {
       const validTarget = targetSport === 'basketball' ? 'basketball' : 'soccer';
+      if (state.match && state.match.clock && state.match.clock.running) {
+        state = Engine.pause(state, Date.now());
+        manageWakeLock();
+      }
+      manualOutId = null;
+      manualInId = null;
+      activeBadgeDrawerPid = null;
+      isNotHereOpen = false;
       save();
       localStorage.setItem('CGM_ACTIVE_SPORT', validTarget);
       load(validTarget);
       state.sport = validTarget;
-      draft = JSON.parse(JSON.stringify(state));
-      draft.starterIds = draft.starterIds || [];
+      initSetupDraft();
       renderSetup();
       renderAll();
+    }
+
+    function switchSport(targetSport) {
+      const validTarget = targetSport === 'basketball' ? 'basketball' : 'soccer';
+      if (validTarget === state.sport) return;
+      if (Engine.hasMatchActivity(state) && !Engine.isMatchComplete(state, Date.now())) {
+        const currentCfg = Engine.getSportConfig(state);
+        const targetCfg = Engine.getSportConfig(validTarget);
+        showActionModal(
+          `Switch to ${targetCfg.icon} ${targetCfg.name}?`,
+          `Your live ${currentCfg.name} match will be paused and saved safely so you can switch back anytime.`,
+          [
+            { label: 'Cancel', dataset: { action: 'closeModal' } },
+            { label: 'Pause & Switch', className: 'bg-slate-900', dataset: { action: 'confirmSwitchSport', sport: validTarget } }
+          ]
+        );
+        return;
+      }
+      executeSwitchSport(validTarget);
     }
 
     async function manageWakeLock() {
@@ -1885,7 +2484,11 @@
     document.addEventListener('visibilitychange', manageWakeLock);
 
     function dispatch(actionName, ...args) {
-      if (['substitute', 'substituteBatch', 'foulOutAndSub', 'toggleFoulOut', 'advancePeriod', 'resetMatch', 'undo'].includes(actionName)) {
+      if ([
+        'substitute', 'substituteBatch', 'foulOutAndSub', 'toggleFoulOut',
+        'advancePeriod', 'resetMatch', 'undo',
+        'markPlayerAbsent', 'markPlayerArrived', 'enterField'
+      ].includes(actionName)) {
         manualOutId = null;
         manualInId = null;
       }
@@ -1899,7 +2502,9 @@
     function showModal(title, msg, buttonsHtml) {
       document.getElementById('modalTitle').textContent = title;
       document.getElementById('modalMessage').textContent = msg;
-      document.getElementById('modalButtons').innerHTML = buttonsHtml;
+      const wrap = document.getElementById('modalButtons');
+      wrap.className = 'flex justify-between gap-2';
+      wrap.innerHTML = buttonsHtml;
       document.getElementById('modalOverlay').classList.remove('hidden');
     }
     function closeModal() {
@@ -1938,16 +2543,20 @@
     }
 
     function resetMatchConfirm() {
-      showModal("Reset Match?", "This resets the clock and play times to zero. Rosters are kept.", `
-          <button class="sun-btn" data-action="closeModal">Cancel</button>
-          <button class="sun-btn bg-red-700 text-white" data-action="resetMatch">Reset Match</button>
-      `);
+      const sportCfg = Engine.getSportConfig(state);
+      const cMs = Engine.clockMs(state, Date.now());
+      const msg = Engine.hasMatchActivity(state)
+        ? `${sportCfg.periodLabel} ${state.match.period} • ${fmt(cMs)} • Score ${state.match.score.us}–${state.match.score.them} will be cleared. Your team roster is kept and Undo will be available right after.`
+        : 'This resets the clock and play times to zero. Your team roster is kept.';
+      showActionModal('Reset Match?', msg, [
+        { label: 'Cancel', dataset: { action: 'closeModal' } },
+        { label: 'Reset Match', className: 'bg-red-700', dataset: { action: 'resetMatch' } }
+      ]);
     }
 
     // Setup Draft
     function openSetup() {
-      draft = JSON.parse(JSON.stringify(state));
-      draft.starterIds = draft.starterIds || [];
+      initSetupDraft();
       renderSetup();
       document.getElementById('setupModal').classList.remove('hidden');
     }
@@ -1957,10 +2566,43 @@
       document.getElementById('setupModal').classList.add('hidden');
     }
 
+    function handleDraftAddPlayer() {
+      const input = document.getElementById('draftPlayerName');
+      const name = input ? input.value.trim() : '';
+      if (name && draft) {
+        draft.roster.push({ id: Engine.generateId(), name });
+        input.value = '';
+        renderSetup();
+      }
+    }
+
+    function updateSetupCounts() {
+      const absentSet = new Set(draft.absentIds || []);
+      const presentCount = draft.roster.filter(r => !absentSet.has(r.id)).length;
+      const reqStarters = Math.max(0, Math.min(draft.settings.fieldSize, presentCount));
+      const activeStartersCount = (draft.starterIds || []).filter(
+        id => !absentSet.has(id) && draft.roster.some(r => r.id === id)
+      ).length;
+
+      document.getElementById('draftRosterCount').textContent = draft.roster.length;
+      document.getElementById('draftStarterCount').textContent = activeStartersCount;
+      document.getElementById('draftTargetStarters').textContent = reqStarters;
+      return absentSet;
+    }
+
     function renderSetup() {
-      document.getElementById('setupErrors').classList.add('hidden');
+      const errDiv = document.getElementById('setupErrors');
+      errDiv.classList.add('hidden');
+      errDiv.replaceChildren();
+
       const sportCfg = Engine.getSportConfig(draft || state);
-      const matchStarted = state.match.period > 1 || state.match.clock.elapsedMs > 0 || state.match.clock.running;
+      const matchActive = Engine.hasMatchActivity(state);
+
+      const liveNotice = document.getElementById('setupLiveNotice');
+      if (liveNotice) liveNotice.classList.toggle('hidden', !matchActive);
+
+      const dangerZone = document.getElementById('setupDangerZone');
+      if (dangerZone) dangerZone.classList.toggle('hidden', state.roster.length === 0);
 
       const sizeLabelEl = document.getElementById('setupSizeLabel');
       if (sizeLabelEl) sizeLabelEl.textContent = sportCfg.sizeLabel;
@@ -1972,35 +2614,111 @@
           : "sun-btn bg-slate-100 text-slate-700 w-full";
       });
 
-      document.getElementById('draftFieldSize').value = draft.settings.fieldSize;
-      document.getElementById('draftMinutes').value = draft.settings.periodMinutes;
+      const fieldSizeEl = document.getElementById('draftFieldSize');
+      const minutesEl = document.getElementById('draftMinutes');
+      fieldSizeEl.value = draft.settings.fieldSize;
+      minutesEl.value = draft.settings.periodMinutes;
+      fieldSizeEl.disabled = matchActive;
+      minutesEl.disabled = matchActive;
 
-      document.getElementById('draftFieldSize').disabled = matchStarted;
-      document.getElementById('draftMinutes').disabled = matchStarted;
-
-      const reqStarters = Math.min(draft.settings.fieldSize, draft.roster.length);
-      document.getElementById('draftRosterCount').textContent = draft.roster.length;
-      document.getElementById('draftStarterCount').textContent = draft.starterIds.length;
-      document.getElementById('draftTargetStarters').textContent = reqStarters;
+      const absentSet = updateSetupCounts();
 
       const list = document.getElementById('draftRosterList');
-      list.innerHTML = draft.roster.map(r => {
-        const isStarter = draft.starterIds.includes(r.id);
-        const btnClass = isStarter ? "bg-emerald-600" : "bg-slate-200 text-slate-900";
-        return `
-          <div class="player-card">
-             <span class="font-black text-lg">${r.name}</span>
-             <button data-action="draftToggleStarter" data-id="${r.id}" class="sun-btn ${btnClass}" style="min-height:36px; font-size:12px;">
-               ${isStarter ? 'Starter' : 'Bench'}
-             </button>
-          </div>
-        `;
-      }).join('');
+      if (matchActive) {
+        list.replaceChildren(...draft.roster.map(r => {
+          const p = state.match.players[r.id];
+          let statusLabel = 'Bench';
+          let statusStyle = { background: '#f1f5f9', color: '#475569' };
+          if (p && p.absent) {
+            statusLabel = 'Absent';
+            statusStyle = { background: '#fef3c7', color: '#92400e' };
+          } else if (p && p.onField) {
+            statusLabel = sportCfg.surfaceLabel;
+            statusStyle = { background: '#dcfce7', color: '#166534' };
+          } else if (p && p.fouledOut) {
+            statusLabel = 'Fouled Out';
+            statusStyle = { background: '#ffe4e6', color: '#881337' };
+          }
+          return createEl('div', {
+            className: 'player-card',
+            style: { cursor: 'default', gap: '0.5rem' }
+          }, [
+            createEl('span', {
+              className: 'font-black text-base truncate',
+              style: { flex: '1', minWidth: '0' },
+              textContent: r.name
+            }),
+            createEl('span', {
+              className: 'text-xs font-bold px-2 py-0-5 rounded-md',
+              style: { ...statusStyle, flexShrink: '0' },
+              textContent: statusLabel
+            })
+          ]);
+        }));
+        return;
+      }
+
+      list.replaceChildren(...draft.roster.map(r => {
+        const isAbsent = absentSet.has(r.id);
+        const isStarter = !isAbsent && draft.starterIds.includes(r.id);
+        const starterBtnClass = isAbsent
+          ? 'sun-btn bg-slate-200 text-slate-400'
+          : (isStarter ? 'sun-btn bg-emerald-600' : 'sun-btn bg-slate-200 text-slate-900');
+        const absentBtnClass = isAbsent
+          ? 'sun-btn bg-amber-400'
+          : 'sun-btn bg-slate-200 text-slate-900';
+
+        return createEl('div', {
+          className: 'player-card',
+          style: { cursor: 'default', gap: '0.5rem', ...(isAbsent ? { background: '#f8fafc' } : {}) }
+        }, [
+          createEl('span', {
+            className: `font-black text-base truncate${isAbsent ? ' text-slate-500' : ''}`,
+            style: { flex: '1', minWidth: '0' },
+            textContent: r.name
+          }),
+          createEl('div', {
+            className: 'flex items-center gap-2',
+            style: { flexShrink: '0' }
+          }, [
+            createEl('button', {
+              className: starterBtnClass,
+              style: {
+                minHeight: '36px',
+                fontSize: '12px',
+                padding: '0 0.55rem',
+                ...(isAbsent ? { opacity: '0.5', cursor: 'not-allowed' } : {})
+              },
+              dataset: { action: 'draftToggleStarter', id: r.id },
+              disabled: isAbsent,
+              'aria-label': isStarter ? `Set ${r.name} to Bench` : `Set ${r.name} as Starter`,
+              textContent: isStarter ? 'Starter' : 'Bench'
+            }),
+            createEl('button', {
+              className: absentBtnClass,
+              style: { minHeight: '36px', fontSize: '12px', padding: '0 0.55rem' },
+              dataset: { action: 'draftToggleAbsent', id: r.id },
+              'aria-label': isAbsent ? `Mark ${r.name} Present` : `Mark ${r.name} Absent`,
+              textContent: isAbsent ? 'Absent' : 'Present'
+            }),
+            createEl('button', {
+              className: 'sun-btn bg-rose-100 text-rose-900',
+              style: { minHeight: '36px', minWidth: '36px', padding: '0 0.45rem', fontSize: '14px' },
+              dataset: { action: 'draftRemovePlayer', id: r.id },
+              'aria-label': `Remove ${r.name}`,
+              title: 'Remove Player',
+              textContent: '🗑'
+            })
+          ])
+        ]);
+      }));
     }
 
     function saveSetup() {
-      draft.settings.fieldSize = parseInt(document.getElementById('draftFieldSize').value);
-      draft.settings.periodMinutes = parseInt(document.getElementById('draftMinutes').value);
+      const parsedFieldSize = parseInt(document.getElementById('draftFieldSize').value, 10);
+      const parsedPeriodMinutes = parseInt(document.getElementById('draftMinutes').value, 10);
+      draft.settings.fieldSize = Number.isInteger(parsedFieldSize) ? parsedFieldSize : 0;
+      draft.settings.periodMinutes = Number.isInteger(parsedPeriodMinutes) ? parsedPeriodMinutes : 0;
       draft.settings.periodCount = state.settings.periodCount || 4; // keeping existing
 
       const draftObj = {
@@ -2009,7 +2727,8 @@
         periodMinutes: draft.settings.periodMinutes,
         periodCount: draft.settings.periodCount,
         roster: draft.roster,
-        starterIds: draft.starterIds
+        starterIds: draft.starterIds,
+        absentIds: draft.absentIds || []
       };
       const result = Engine.applySetup(state, draftObj, Date.now());
       if (result.ok) {
@@ -2019,9 +2738,246 @@
         closeSetup();
       } else {
         const errDiv = document.getElementById('setupErrors');
-        errDiv.innerHTML = result.errors.join('<br>');
+        errDiv.replaceChildren(...result.errors.map(err => createEl('div', { textContent: err })));
         errDiv.classList.remove('hidden');
       }
+    }
+
+    function clearRosterErrors() {
+      const errEl = document.getElementById('rosterErrors');
+      if (errEl) {
+        errEl.textContent = '';
+        errEl.classList.add('hidden');
+      }
+    }
+
+    function findRecommendedReplacementId(now) {
+      let rec = Engine.recommend(state, now);
+      if (!rec.inId && rec.status === 'all-skipped') {
+        rec = Engine.recommend({ ...state, match: { ...state.match, skipIds: [] } }, now);
+      }
+      return rec.inId || null;
+    }
+
+    function openRoster() {
+      clearRosterErrors();
+      const input = document.getElementById('livePlayerName');
+      if (input) input.value = '';
+      renderRosterModal();
+      document.getElementById('rosterModal').classList.remove('hidden');
+    }
+
+    function closeRoster() {
+      clearRosterErrors();
+      document.getElementById('rosterModal').classList.add('hidden');
+    }
+
+    function renderRosterModal() {
+      const sportCfg = Engine.getSportConfig(state);
+      const hasOpenSlot = Engine._countOnField(state) < state.settings.fieldSize;
+      const activeMatch = Engine.hasMatchActivity(state);
+
+      const addFieldBtn = document.getElementById('liveAddFieldBtn');
+      if (addFieldBtn) {
+        addFieldBtn.textContent = `+ Add to ${sportCfg.surfaceNoun}`;
+        addFieldBtn.classList.toggle('hidden', !hasOpenSlot);
+      }
+
+      const present = [];
+      const absent = [];
+      for (const r of state.roster) {
+        const p = state.match.players[r.id];
+        if (p && p.absent) absent.push({ r, p });
+        else if (p) present.push({ r, p });
+      }
+
+      document.getElementById('rosterSummaryCount').textContent = `${present.length} Present • ${absent.length} Absent`;
+      document.getElementById('rosterPresentCount').textContent = present.length;
+      document.getElementById('rosterAbsentCount').textContent = absent.length;
+      document.getElementById('rosterAbsentSection').classList.toggle('hidden', absent.length === 0);
+
+      const presentList = document.getElementById('rosterPresentList');
+      if (present.length === 0) {
+        presentList.replaceChildren(createEl('div', {
+          className: 'text-xs font-bold text-slate-400',
+          textContent: 'No present players.'
+        }));
+      } else {
+        presentList.replaceChildren(...present.map(({ r, p }) => {
+          let statusLabel = 'Bench';
+          let statusStyle = { background: '#f1f5f9', color: '#475569' };
+          if (p.onField) {
+            statusLabel = sportCfg.surfaceLabel;
+            statusStyle = { background: '#dcfce7', color: '#166534' };
+          } else if (p.fouledOut) {
+            statusLabel = 'Fouled Out';
+            statusStyle = { background: '#ffe4e6', color: '#881337' };
+          } else if (p.resting) {
+            statusLabel = 'Rest';
+            statusStyle = { background: '#e2e8f0', color: '#334155' };
+          }
+
+          return createEl('div', {
+            className: 'player-card',
+            style: { cursor: 'default', gap: '0.5rem' },
+            dataset: { id: r.id }
+          }, [
+            createEl('div', { style: { flex: '1', minWidth: '0' } }, [
+              createEl('div', { className: 'font-black text-base truncate', textContent: r.name }),
+              createEl('div', { className: 'flex items-center gap-2 mt-1' }, [
+                createEl('span', {
+                  className: 'text-xs font-bold px-2 py-0-5 rounded-md',
+                  style: statusStyle,
+                  textContent: statusLabel
+                })
+              ])
+            ]),
+            createEl('div', { className: 'flex items-center gap-2', style: { flexShrink: '0' } }, [
+              createEl('button', {
+                className: 'sun-btn bg-amber-400',
+                style: { minHeight: '36px', padding: '0 0.65rem', fontSize: '12px', whiteSpace: 'nowrap' },
+                dataset: { action: 'rosterMarkAbsent', id: r.id },
+                textContent: activeMatch ? 'Left Early' : 'Absent'
+              }),
+              createEl('button', {
+                className: 'sun-btn bg-rose-100 text-rose-900',
+                style: { minHeight: '36px', minWidth: '36px', padding: '0 0.5rem', fontSize: '14px' },
+                'aria-label': `Remove ${r.name}`,
+                title: 'Remove from Team',
+                dataset: { action: 'rosterRemoveBtn', id: r.id },
+                textContent: '🗑'
+              })
+            ])
+          ]);
+        }));
+      }
+
+      const absentList = document.getElementById('rosterAbsentList');
+      absentList.replaceChildren(...absent.map(({ r, p }) => {
+        const leftEarly = p.departedAtMs !== null && p.departedAtMs !== undefined;
+        const actionBtns = [
+          createEl('button', {
+            className: 'sun-btn bg-emerald-600',
+            style: { minHeight: '36px', padding: '0 0.65rem', fontSize: '12px', whiteSpace: 'nowrap' },
+            dataset: { action: 'rosterArrivedBench', id: r.id },
+            textContent: '✓ Arrived'
+          }),
+          hasOpenSlot && !p.fouledOut ? createEl('button', {
+            className: 'sun-btn bg-blue-700',
+            style: { minHeight: '36px', padding: '0 0.65rem', fontSize: '12px', whiteSpace: 'nowrap' },
+            dataset: { action: 'rosterArrivedField', id: r.id },
+            textContent: `→ ${sportCfg.surfaceNoun}`
+          }) : null,
+          createEl('button', {
+            className: 'sun-btn bg-rose-100 text-rose-900',
+            style: { minHeight: '36px', minWidth: '36px', padding: '0 0.5rem', fontSize: '14px' },
+            'aria-label': `Remove ${r.name}`,
+            title: 'Remove from Team',
+            dataset: { action: 'rosterRemoveBtn', id: r.id },
+            textContent: '🗑'
+          })
+        ];
+
+        return createEl('div', {
+          className: 'player-card',
+          style: { cursor: 'default', gap: '0.5rem', background: '#f8fafc' },
+          dataset: { id: r.id }
+        }, [
+          createEl('div', { style: { flex: '1', minWidth: '0' } }, [
+            createEl('div', { className: 'font-black text-base truncate', textContent: r.name }),
+            createEl('div', { className: 'flex items-center gap-2 mt-1' }, [
+              createEl('span', {
+                className: 'text-xs font-bold px-2 py-0-5 rounded-md',
+                style: leftEarly
+                  ? { background: '#fef3c7', color: '#92400e' }
+                  : { background: '#e2e8f0', color: '#475569' },
+                textContent: leftEarly ? 'Left Early' : 'Not Here Yet'
+              })
+            ])
+          ]),
+          createEl('div', {
+            className: 'flex items-center gap-2 flex-wrap',
+            style: { flexShrink: '0', justifyContent: 'flex-end' }
+          }, actionBtns)
+        ]);
+      }));
+    }
+
+    function renderNotHere() {
+      const section = document.getElementById('notHereSection');
+      const list = document.getElementById('notHereList');
+      const label = document.getElementById('notHereToggleLabel');
+      const chevron = document.getElementById('notHereChevron');
+      if (!section || !list || !label || !chevron) return;
+
+      const absentRoster = state.roster.filter(r => state.match.players[r.id]?.absent);
+      if (absentRoster.length === 0) {
+        isNotHereOpen = false;
+        section.classList.add('hidden');
+        list.classList.add('hidden');
+        list.replaceChildren();
+        return;
+      }
+
+      const sportCfg = Engine.getSportConfig(state);
+      const hasOpenSlot = Engine._countOnField(state) < state.settings.fieldSize;
+
+      section.classList.remove('hidden');
+      label.textContent = `Not Here Yet (${absentRoster.length})`;
+      chevron.textContent = isNotHereOpen ? '▾' : '▸';
+      list.classList.toggle('hidden', !isNotHereOpen);
+
+      list.replaceChildren(...absentRoster.map(r => {
+        const p = state.match.players[r.id];
+        const leftEarly = p && p.departedAtMs !== null && p.departedAtMs !== undefined;
+        return createEl('div', {
+          className: 'player-card',
+          style: { cursor: 'default', gap: '0.5rem', background: '#f8fafc', padding: '0.6rem 0.75rem' },
+          dataset: { id: r.id }
+        }, [
+          createEl('div', { style: { flex: '1', minWidth: '0' } }, [
+            createEl('div', { className: 'font-black text-base truncate', textContent: r.name }),
+            leftEarly ? createEl('span', {
+              className: 'text-xs font-bold px-2 py-0-5 rounded-md',
+              style: { background: '#fef3c7', color: '#92400e', display: 'inline-block', marginTop: '0.25rem' },
+              textContent: 'Left Early'
+            }) : null
+          ]),
+          createEl('div', { className: 'flex items-center gap-2', style: { flexShrink: '0' } }, [
+            createEl('button', {
+              className: 'sun-btn bg-emerald-600',
+              style: { minHeight: '36px', padding: '0 0.65rem', fontSize: '12px', whiteSpace: 'nowrap' },
+              dataset: { action: 'quickArrivedBench', id: r.id },
+              textContent: '✓ Arrived'
+            }),
+            hasOpenSlot && !(p && p.fouledOut) ? createEl('button', {
+              className: 'sun-btn bg-blue-700',
+              style: { minHeight: '36px', padding: '0 0.65rem', fontSize: '12px', whiteSpace: 'nowrap' },
+              dataset: { action: 'quickArrivedField', id: r.id },
+              textContent: `→ ${sportCfg.surfaceNoun}`
+            }) : null
+          ])
+        ]);
+      }));
+    }
+
+    function handleLiveAdd(putOnField) {
+      const input = document.getElementById('livePlayerName');
+      const errEl = document.getElementById('rosterErrors');
+      const res = Engine.addPlayerLive(state, input ? input.value : '', { putOnField: Boolean(putOnField) }, Date.now());
+      if (!res.ok) {
+        if (errEl) {
+          errEl.textContent = res.errors.join(' • ');
+          errEl.classList.remove('hidden');
+        }
+        return;
+      }
+      clearRosterErrors();
+      if (input) input.value = '';
+      state = res.state;
+      save();
+      manageWakeLock();
+      renderAll();
     }
 
     function renderMatchLog() {
@@ -2072,7 +3028,7 @@
         `;
       }
 
-      // 3. Scoring Breakdown (1PT / 2PT / 3PT Mix & Top Scorers)
+      // 3. NBA/ESPN Player Scorecard Grid
       const shotMixSummaryEl = document.getElementById('logShotMixSummary');
       if (shotMixSummaryEl) {
         if (isBball && (metrics.teamShotMix.pt3 > 0 || metrics.teamShotMix.pt2 > 0 || metrics.teamShotMix.pt1 > 0)) {
@@ -2083,38 +3039,82 @@
       }
 
       const scorersEl = document.getElementById('logTopScorers');
-      const scorers = metrics.players.filter(p => p.pointsScored > 0).sort((a, b) => b.pointsScored - a.pointsScored);
-      if (scorers.length === 0) {
-        scorersEl.innerHTML = '<span class="text-slate-400 text-sm">None yet</span>';
+      const sortedPlayers = [...metrics.players].sort((a, b) => (b.pointsScored - a.pointsScored) || (b.totalMs - a.totalMs));
+      if (sortedPlayers.length === 0) {
+        scorersEl.innerHTML = '<span class="text-slate-400 text-sm">No players on roster</span>';
       } else {
-        const topPts = Math.max(...scorers.map(s => s.pointsScored), 1);
-        scorersEl.innerHTML = scorers.map(p => {
-          if (!isBball) {
-            return `<div class="bg-slate-100 border border-slate-300 px-3 py-2 rounded-lg flex justify-between items-center">
-              <span>${p.name}</span>
-              <span>${'⚽'.repeat(p.pointsScored)} (${p.pointsScored})</span>
-            </div>`;
-          }
+        const periodHeaders = metrics.boxScore.us.map((_, i) =>
+          `<th style="padding:4px 3px; text-align:center; color:#64748b; font-size:11px; font-weight:800;">${pShort}${i + 1}</th>`
+        ).join('');
+        const totalHeader = isBball ? 'PTS' : 'GLS';
+
+        const playerRowsHtml = sortedPlayers.map((p, idx) => {
+          const badgeIcons = Object.entries(p.badgeCounts)
+            .filter(([_, c]) => c > 0)
+            .map(([type, c]) => `${Engine.BADGE_MAP[type]?.icon || ''}${c > 1 ? '×' + c : ''}`)
+            .join(' ');
+
           const pills = [];
-          if (p.shotMix.pt3 > 0) pills.push(`<span style="background:#dbeafe; color:#1d4ed8; padding:2px 6px; border-radius:6px; font-size:11px; font-weight:800;">${p.shotMix.pt3}×3PT</span>`);
-          if (p.shotMix.pt2 > 0) pills.push(`<span style="background:#dcfce7; color:#15803d; padding:2px 6px; border-radius:6px; font-size:11px; font-weight:800;">${p.shotMix.pt2}×2PT</span>`);
-          if (p.shotMix.pt1 > 0) pills.push(`<span style="background:#fef3c7; color:#b45309; padding:2px 6px; border-radius:6px; font-size:11px; font-weight:800;">${p.shotMix.pt1}×1PT</span>`);
-          const barPct = Math.min(100, Math.max(12, Math.round((p.pointsScored / topPts) * 100)));
+          if (isBball && p.pointsScored > 0) {
+            if (p.shotMix.pt3 > 0) pills.push(`<span style="background:#dbeafe; color:#1d4ed8; padding:1px 4px; border-radius:4px; font-size:10px; font-weight:800;">${p.shotMix.pt3}×3PT</span>`);
+            if (p.shotMix.pt2 > 0) pills.push(`<span style="background:#dcfce7; color:#15803d; padding:1px 4px; border-radius:4px; font-size:10px; font-weight:800;">${p.shotMix.pt2}×2PT</span>`);
+            if (p.shotMix.pt1 > 0) pills.push(`<span style="background:#fef3c7; color:#b45309; padding:1px 4px; border-radius:4px; font-size:10px; font-weight:800;">${p.shotMix.pt1}×1PT</span>`);
+          }
+          const subLine = [pills.join(' '), badgeIcons].filter(Boolean).join(' ');
+
+          const pCells = (p.pointsByPeriod || []).map(val =>
+            val > 0
+              ? `<td class="font-mono-nums" style="padding:5px 3px; text-align:center; font-weight:900; color:#0f172a; font-size:12px;">${val}</td>`
+              : `<td class="font-mono-nums" style="padding:5px 3px; text-align:center; color:#cbd5e1; font-weight:600; font-size:12px;">-</td>`
+          ).join('');
+
+          const totalCell = p.pointsScored > 0
+            ? `<span style="background:#0f172a; color:#fff; padding:2px 6px; border-radius:5px; font-size:11px; font-weight:900; white-space:nowrap;">${p.pointsScored}${isBball ? ' PTS' : ' ⚽'}</span>`
+            : `<span style="color:#94a3b8; font-weight:700; font-size:12px;">0</span>`;
+
+          const rowBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
           return `
-            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:8px 10px;">
-              <div class="flex justify-between items-center mb-1">
-                <span class="font-black text-sm text-slate-900">${p.name}</span>
-                <div class="flex items-center gap-1">
-                  ${pills.join('')}
-                  <span class="font-mono-nums font-black text-sm" style="background:#0f172a; color:white; padding:2px 8px; border-radius:6px; margin-left:4px;">🏀 ${p.pointsScored} pts</span>
-                </div>
-              </div>
-              <div style="background:#e2e8f0; height:6px; border-radius:3px; overflow:hidden;">
-                <div style="background:#2563eb; width:${barPct}%; height:100%; border-radius:3px;"></div>
-              </div>
-            </div>
+            <tr style="border-bottom:1px solid #f1f5f9; background:${rowBg};">
+              <td style="padding:6px 4px; text-align:left; vertical-align:middle;">
+                <div style="font-weight:900; font-size:13px; color:#0f172a; line-height:1.2;">${escHtml(p.name)}${p.fouledOut ? ' <span style="font-size:10px; color:#be123c; font-weight:800;">(FO)</span>' : ''}</div>
+                ${subLine ? `<div style="display:flex; flex-wrap:wrap; align-items:center; gap:3px; margin-top:2px; font-size:11px;">${subLine}</div>` : ''}
+              </td>
+              <td class="font-mono-nums" style="padding:5px 3px; text-align:center; font-size:11px; color:#475569; font-weight:700; white-space:nowrap;">${fmt(p.totalMs)}</td>
+              ${pCells}
+              <td class="font-mono-nums" style="padding:5px 4px; text-align:right;">${totalCell}</td>
+            </tr>
           `;
         }).join('');
+
+        const teamPeriodCells = metrics.boxScore.us.map(val =>
+          `<td class="font-mono-nums" style="padding:6px 3px; text-align:center; font-weight:900; color:#0f172a; font-size:12px;">${val}</td>`
+        ).join('');
+
+        scorersEl.innerHTML = `
+          <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:12px;">
+              <thead>
+                <tr style="border-bottom:2px solid #e2e8f0;">
+                  <th style="padding:4px 4px; text-align:left; color:#64748b; font-size:11px; font-weight:800;">PLAYER</th>
+                  <th style="padding:4px 3px; text-align:center; color:#64748b; font-size:11px; font-weight:800;">MIN</th>
+                  ${periodHeaders}
+                  <th style="padding:4px 4px; text-align:right; color:#0f172a; font-size:11px; font-weight:900;">${totalHeader}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${playerRowsHtml}
+              </tbody>
+              <tfoot>
+                <tr style="border-top:2px solid #cbd5e1; background:#f1f5f9;">
+                  <td style="padding:6px 4px; font-weight:900; font-size:11px; color:#0f172a; text-transform:uppercase;">TEAM</td>
+                  <td style="padding:6px 3px; text-align:center; color:#94a3b8; font-weight:700;">-</td>
+                  ${teamPeriodCells}
+                  <td class="font-mono-nums" style="padding:6px 4px; text-align:right; font-weight:900; font-size:12px; color:#059669; white-space:nowrap;">${state.match.score.us}${isBball ? ' PTS' : ''}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        `;
       }
 
       // 4. Hustle & Impact Awards Trophy Case
@@ -2125,78 +3125,131 @@
         } else {
           awardsEl.innerHTML = metrics.impactAwards.map(a => `
             <div style="background:#fefce8; border:2px solid #facc15; border-radius:10px; padding:8px 10px; display:flex; flex-direction:column; justify-content:space-between;">
-              <div style="font-size:11px; font-weight:900; text-transform:uppercase; color:#854d0e;">${a.icon} ${a.awardTitle}</div>
-              <div style="font-size:15px; font-weight:900; color:#0f172a; margin-top:2px;">${a.leaderName}</div>
-              <div style="font-size:11px; font-weight:700; color:#a16207; margin-top:2px;">${a.count}× ${Engine.BADGE_MAP[a.badgeType]?.title || a.subtitle}</div>
+              <div style="font-size:11px; font-weight:900; text-transform:uppercase; color:#854d0e;">${a.icon} ${escHtml(a.awardTitle)}</div>
+              <div style="font-size:15px; font-weight:900; color:#0f172a; margin-top:2px;">${escHtml(a.leaderName)}</div>
+              <div style="font-size:11px; font-weight:700; color:#a16207; margin-top:2px;">${a.count}× ${escHtml(Engine.BADGE_MAP[a.badgeType]?.title || a.subtitle)}</div>
             </div>
           `).join('');
         }
       }
 
-      // 5. Scoring Timeline
+      // 5. Collapsible Scoring Play-by-Play Drawer
+      const pbpLabelEl = document.getElementById('togglePlayByPlayLabel');
+      const pbpChevronEl = document.getElementById('togglePlayByPlayChevron');
       const timelineEl = document.getElementById('logTimeline');
-      if (!state.match.events || state.match.events.length === 0) {
-        timelineEl.innerHTML = `<span class="text-slate-400">No ${isBball ? 'points' : 'goals'} recorded</span>`;
-      } else {
-        const sortedEvents = [...state.match.events].sort((a, b) => {
-          if (a.period !== b.period) return a.period - b.period;
-          return a.clockMs - b.clockMs;
-        });
+      const playCount = metrics.playByPlay ? metrics.playByPlay.length : 0;
+      if (pbpLabelEl) {
+        pbpLabelEl.textContent = `📋 Scoring Play-by-Play (${playCount} ${playCount === 1 ? 'play' : 'plays'})`;
+      }
+      if (pbpChevronEl) {
+        pbpChevronEl.textContent = isPlayByPlayOpen ? '▾' : '▸';
+      }
+      if (timelineEl) {
+        if (isPlayByPlayOpen) timelineEl.classList.remove('hidden');
+        else timelineEl.classList.add('hidden');
 
-        timelineEl.innerHTML = sortedEvents.map(evt => {
-          const pts = evt.points || 1;
-          if (evt.type === 'goal_us') {
-            const name = state.roster.find(r => r.id === evt.playerId)?.name || 'Unknown';
-            const label = isBball
-              ? `${pShort}${evt.period} ${fmt(evt.clockMs)} - ${name} 🏀 +${pts}`
-              : `${pShort}${evt.period} ${fmt(evt.clockMs)} - ${name} ⚽`;
-            return `<span class="bg-emerald-100 text-emerald-900 px-2 py-1 rounded border border-emerald-300 flex items-center gap-1">
-              ${label}
-              <span data-action="deleteEventBtn" data-id="${evt.id}" class="ml-1 text-emerald-700 cursor-pointer font-black px-1" title="Delete">&times;</span>
-            </span>`;
-          } else {
-            const label = isBball
-              ? `${pShort}${evt.period} ${fmt(evt.clockMs)} - Them 🏀 +${pts}`
-              : `${pShort}${evt.period} ${fmt(evt.clockMs)} - Them ⚽`;
-            return `<span class="bg-rose-100 text-rose-900 px-2 py-1 rounded border border-rose-300 flex items-center gap-1">
-              ${label}
-              <span data-action="deleteEventBtn" data-id="${evt.id}" class="ml-1 text-rose-700 cursor-pointer font-black px-1" title="Delete">&times;</span>
-            </span>`;
-          }
-        }).join('');
+        if (!metrics.playByPlay || metrics.playByPlay.length === 0) {
+          timelineEl.innerHTML = `<span class="text-slate-400">No ${isBball ? 'points' : 'goals'} recorded</span>`;
+        } else {
+          timelineEl.innerHTML = metrics.playByPlay.map(evt => {
+            const isUs = evt.type === 'goal_us';
+            const rowBg = isUs ? '#ecfdf5' : '#fff1f2';
+            const rowBorder = isUs ? '#a7f3d0' : '#fecdd3';
+            const whoHtml = isUs
+              ? `<span class="text-emerald-900 font-black">${escHtml(evt.playerName)} ${isBball ? '🏀 +' + evt.points : '⚽'}</span>`
+              : `<span class="text-rose-900 font-bold">Them ${isBball ? '🏀 +' + evt.points : '⚽'}</span>`;
+            return `
+              <div class="flex justify-between items-center rounded-md border" style="background:${rowBg}; border-color:${rowBorder}; padding:5px 8px;">
+                <div class="flex items-center gap-2" style="min-width:0;">
+                  <span class="font-mono-nums text-slate-500" style="white-space:nowrap;">${pShort}${evt.period} ${fmt(evt.clockMs)}</span>
+                  ${whoHtml}
+                </div>
+                <div class="flex items-center gap-1" style="white-space:nowrap;">
+                  <span class="font-mono-nums font-black rounded" style="background:#e2e8f0; color:#0f172a; padding:2px 6px;">${evt.runningUs} - ${evt.runningThem}</span>
+                  <span data-action="deleteEventBtn" data-id="${escHtml(evt.id)}" class="ml-1 text-slate-500 cursor-pointer font-black px-1" title="Delete">&times;</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
       }
 
-      // 6. Playtime Summary (Unchanged per user request)
+      // 6. Playtime Summary (Safe DOM + Per-Player Prorated Targets & Absentee Handling)
       const playtimeEl = document.getElementById('logPlaytime');
       const maxMs = metrics.maxPlayerMs || 1;
-      const targetPct = Math.min(100, Math.max(0, Math.round((metrics.targetMs / maxMs) * 100)));
 
       playtimeEl.className = "flex flex-col gap-3";
-      playtimeEl.innerHTML = `
-        <div style="font-size:12px; font-weight:bold; color:#64748b; margin-bottom:4px;">
-          Equal Target Share: ${fmt(metrics.targetMs)} • Total Badges: ${metrics.totalBadges} 🎉
-        </div>
-      ` + metrics.players.map(p => {
+      const headerNote = createEl('div', {
+        style: { fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' },
+        textContent: `Equal Target Share: ${fmt(metrics.targetMs)} • Total Badges: ${metrics.totalBadges} 🎉`
+      });
+
+      const playerRows = metrics.players.map(p => {
+        if (p.absentAllGame) {
+          return createEl('div', { className: 'gauge-row' }, [
+            createEl('div', { className: 'gauge-header', style: { opacity: '0.65', marginBottom: '0' } }, [
+              createEl('span', { textContent: p.name }),
+              createEl('span', {
+                className: 'text-xs font-bold px-2 py-0-5 rounded-md',
+                style: { background: '#f1f5f9', color: '#475569' },
+                textContent: 'Absent'
+              })
+            ])
+          ]);
+        }
+
         const widthPct = Math.min(100, Math.max(0, Math.round((p.totalMs / maxMs) * 100)));
+        const playerTargetPct = Math.min(100, Math.max(0, Math.round((p.targetMs / maxMs) * 100)));
+
+        const nameChildren = [
+          `${p.name}${p.fouledOut ? ' (Fouled Out)' : ''}`,
+          p.arrivedLate ? createEl('span', {
+            style: { fontSize: '11px', fontWeight: '700', color: '#1d4ed8', marginLeft: '4px' },
+            textContent: '(Late Arrival)'
+          }) : null,
+          p.leftEarly ? createEl('span', {
+            style: { fontSize: '11px', fontWeight: '700', color: '#b45309', marginLeft: '4px' },
+            textContent: '(Left Early)'
+          }) : null
+        ];
+
         const badgePills = Object.entries(p.badgeCounts)
           .filter(([_, count]) => count > 0)
-          .map(([type, count]) => `<span class="badge-pill">${Engine.BADGE_MAP[type].icon} ${Engine.BADGE_MAP[type].title}${count > 1 ? ' x' + count : ''}</span>`)
-          .join('');
+          .map(([type, count]) => createEl('span', {
+            className: 'badge-pill',
+            textContent: `${Engine.BADGE_MAP[type].icon} ${Engine.BADGE_MAP[type].title}${count > 1 ? ' x' + count : ''}`
+          }));
 
-        return `
-          <div class="gauge-row">
-            <div class="gauge-header">
-              <span>${p.name}${p.fouledOut ? ' (Fouled Out)' : ''}</span>
-              <span class="font-mono-nums">${fmt(p.totalMs)}</span>
-            </div>
-            <div class="gauge-bar-track">
-              <div class="gauge-bar-fill ${p.fairnessStatus}" style="width: ${widthPct}%;"></div>
-              <div class="target-line-indicator" style="left: ${targetPct}%;" title="Equal Share Target"></div>
-            </div>
-            <div class="recap-badges-list mt-1">${badgePills || '<span style="font-size:11px; opacity:0.6; font-style:italic;">No badges yet</span>'}</div>
-          </div>
-        `;
-      }).join('');
+        return createEl('div', { className: 'gauge-row' }, [
+          createEl('div', { className: 'gauge-header' }, [
+            createEl('span', {}, nameChildren),
+            createEl('span', { className: 'font-mono-nums', textContent: fmt(p.totalMs) })
+          ]),
+          createEl('div', { className: 'gauge-bar-track' }, [
+            createEl('div', {
+              className: `gauge-bar-fill ${p.fairnessStatus}`,
+              style: { width: `${widthPct}%` }
+            }),
+            createEl('div', {
+              className: 'target-line-indicator',
+              style: { left: `${playerTargetPct}%` },
+              title: (p.arrivedLate || p.leftEarly)
+                ? `Prorated Target: ${fmt(p.targetMs)}`
+                : 'Equal Share Target'
+            })
+          ]),
+          createEl('div', { className: 'recap-badges-list mt-1' },
+            badgePills.length > 0
+              ? badgePills
+              : [createEl('span', {
+                  style: { fontSize: '11px', opacity: '0.6', fontStyle: 'italic' },
+                  textContent: 'No badges yet'
+                })]
+          )
+        ]);
+      });
+
+      playtimeEl.replaceChildren(headerNote, ...playerRows);
     }
 
     function generateParentSummaryText(metrics) {
@@ -2205,14 +3258,16 @@
         ? `Great basketball game today! 🏀\nEveryone got equal court time (~${Math.round(metrics.targetMs / 60000)} mins each).\n\n🌟 Sportsmanship Badges Earned Today:\n`
         : `Great soccer match today! 🐅\nEveryone got equal play time (~${Math.round(metrics.targetMs / 60000)} mins each).\n\n🌟 Sportsmanship Badges Earned Today:\n`;
 
-      metrics.players.forEach(p => {
-        const badges = Object.entries(p.badgeCounts)
-          .filter(([_, count]) => count > 0)
-          .map(([type, count]) => `${Engine.BADGE_MAP[type].icon} ${Engine.BADGE_MAP[type].title}${count > 1 ? ' x' + count : ''}`)
-          .join(', ');
+      metrics.players
+        .filter(p => !p.absentAllGame)
+        .forEach(p => {
+          const badges = Object.entries(p.badgeCounts)
+            .filter(([_, count]) => count > 0)
+            .map(([type, count]) => `${Engine.BADGE_MAP[type].icon} ${Engine.BADGE_MAP[type].title}${count > 1 ? ' x' + count : ''}`)
+            .join(', ');
 
-        text += `• ${p.name}: ${badges || 'Great Team Play'}\n`;
-      });
+          text += `• ${p.name}: ${badges || 'Great Team Play'}\n`;
+        });
 
       text += isBball
         ? `\nThanks coaches & parents for a fantastic game! 🏀`
@@ -2265,6 +3320,7 @@
         const inNames = batch.inIds
           .map(id => state.roster.find(r => r.id === id)?.name)
           .filter(Boolean)
+          .map(escHtml)
           .join(', ') || 'bench players';
         midBanner.className = "sun-card bg-amber-bg flex items-center justify-between gap-2";
         midBanner.innerHTML = `
@@ -2387,12 +3443,12 @@
           const outListHtml = batch.outIds.map(outId => {
             const name = state.roster.find(r => r.id === outId)?.name || '--';
             const t = Engine.times(state, outId, now);
-            return `<div class="mb-1"><span class="font-black text-base">${name}</span> <span class="text-xs font-mono-nums">(Shift: <span data-t="recOutShift" data-id="${outId}">${fmt(t.shiftMs)}</span>)</span></div>`;
+            return `<div class="mb-1"><span class="font-black text-base">${escHtml(name)}</span> <span class="text-xs font-mono-nums">(Shift: <span data-t="recOutShift" data-id="${escHtml(outId)}">${fmt(t.shiftMs)}</span>)</span></div>`;
           }).join('');
           const inListHtml = batch.inIds.map(inId => {
             const name = state.roster.find(r => r.id === inId)?.name || '--';
             const t = Engine.times(state, inId, now);
-            return `<div class="mb-1"><span class="font-black text-base">${name}</span> <span class="text-xs font-mono-nums">(Sat: <span data-t="recInSat" data-id="${inId}">${fmt(t.satMs)}</span>)</span></div>`;
+            return `<div class="mb-1"><span class="font-black text-base">${escHtml(name)}</span> <span class="text-xs font-mono-nums">(Sat: <span data-t="recInSat" data-id="${escHtml(inId)}">${fmt(t.satMs)}</span>)</span></div>`;
           }).join('');
           batchView.innerHTML = `
             <div class="text-xs font-black mb-2 text-blue-900">Recommended Line Sub (${batch.outIds.length} ⇄ ${batch.inIds.length})</div>
@@ -2439,6 +3495,10 @@
         }
       }
 
+      if (activeBadgeDrawerPid && (!state.match.players[activeBadgeDrawerPid] || state.match.players[activeBadgeDrawerPid].absent)) {
+        activeBadgeDrawerPid = null;
+      }
+
       // Lists
       let fieldHtml = '';
       let benchHtml = '';
@@ -2446,7 +3506,7 @@
 
       for (let r of state.roster) {
         let p = state.match.players[r.id];
-        if (!p) continue;
+        if (!p || p.absent) continue;
         let t = Engine.times(state, r.id, now);
 
         const isField = p.onField;
@@ -2457,26 +3517,28 @@
         if (!isField && manualInId === r.id) classes += " selected";
         if (!isField && (p.resting || p.fouledOut)) classes += " resting";
 
+        const safeId = escHtml(r.id);
+        const safeName = escHtml(r.name);
         const timeLabel = isField ? "Shift:" : "Sat:";
-        const timeSpan = `<span class="font-mono-nums font-black text-sm" data-t="liveMs" data-id="${r.id}">00:00</span>`;
-        const periodSpan = `<span class="font-mono-nums font-bold" data-t="periodMs" data-id="${r.id}">00:00</span>`;
-        const totalSpan = `<span class="font-mono-nums font-bold" data-t="totalMs" data-id="${r.id}">00:00</span>`;
-        const fBadge = `<span class="fairness-badge ${badgeClass(t.fairDeltaMs)}" data-t="fairMs" data-id="${r.id}">${fmtBadge(t.fairDeltaMs)}</span>`;
+        const timeSpan = `<span class="font-mono-nums font-black text-sm" data-t="liveMs" data-id="${safeId}">00:00</span>`;
+        const periodSpan = `<span class="font-mono-nums font-bold" data-t="periodMs" data-id="${safeId}">00:00</span>`;
+        const totalSpan = `<span class="font-mono-nums font-bold" data-t="totalMs" data-id="${safeId}">00:00</span>`;
+        const fBadge = `<span class="fairness-badge ${badgeClass(t.fairDeltaMs)}" data-t="fairMs" data-id="${safeId}">${fmtBadge(t.fairDeltaMs)}</span>`;
 
         let actionButtons = '';
         if (isField) {
           if (isBball) {
-            actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" data-points="1" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +1</button>`;
-            actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" data-points="2" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +2</button>`;
-            actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" data-points="3" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +3</button>`;
+            actionButtons += `<button data-action="scoreUsBtn" data-id="${safeId}" data-points="1" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +1</button>`;
+            actionButtons += `<button data-action="scoreUsBtn" data-id="${safeId}" data-points="2" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +2</button>`;
+            actionButtons += `<button data-action="scoreUsBtn" data-id="${safeId}" data-points="3" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +3</button>`;
           } else {
-            actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" data-points="1" class="sun-btn bg-emerald-600" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.25rem;">⚽ Goal</button>`;
+            actionButtons += `<button data-action="scoreUsBtn" data-id="${safeId}" data-points="1" class="sun-btn bg-emerald-600" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.25rem;">⚽ Goal</button>`;
           }
         }
         if (isBball) {
-          actionButtons += `<button data-action="toggleFoulOutBtn" data-id="${r.id}" class="sun-btn bg-rose-100 text-rose-900" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">${!isField && p.fouledOut ? 'UNFOUL' : '🚫 Foul Out'}</button>`;
+          actionButtons += `<button data-action="toggleFoulOutBtn" data-id="${safeId}" class="sun-btn bg-rose-100 text-rose-900" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">${!isField && p.fouledOut ? 'UNFOUL' : '🚫 Foul Out'}</button>`;
         }
-        actionButtons += `<button data-action="toggleBadgeDrawer" data-id="${r.id}" class="sun-btn" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem;">+ 🌟 Badge</button>`;
+        actionButtons += `<button data-action="toggleBadgeDrawer" data-id="${safeId}" class="sun-btn" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem;">+ 🌟 Badge</button>`;
 
         const badgeCounts = {};
         Object.keys(Engine.BADGE_MAP).forEach(k => { badgeCounts[k] = 0; });
@@ -2489,19 +3551,19 @@
           .join(' ');
 
         const drawerButtons = Object.entries(sportCfg.badges)
-          .map(([bKey, bMeta]) => `<button class="badge-btn" data-action="awardBadge" data-id="${r.id}" data-badge="${bKey}" title="${bMeta.title}">${bMeta.icon}</button>`)
+          .map(([bKey, bMeta]) => `<button class="badge-btn" data-action="awardBadge" data-id="${safeId}" data-badge="${escHtml(bKey)}" title="${escHtml(bMeta.title)}">${bMeta.icon}</button>`)
           .join('');
         const drawerHtml = activeBadgeDrawerPid === r.id ? `
-           <div class="badge-strip" data-id="${r.id}">
+           <div class="badge-strip" data-id="${safeId}">
              ${drawerButtons}
            </div>
          ` : '';
 
         let html = `
-           <div class="${classes}" data-action="${isField ? 'tapField' : 'tapBench'}" data-id="${r.id}">
+           <div class="${classes}" data-action="${isField ? 'tapField' : 'tapBench'}" data-id="${safeId}">
              <div style="flex:1">
                <div class="flex items-center gap-2 mb-1">
-                 <span class="font-black text-lg">${r.name}</span>
+                 <span class="font-black text-lg">${safeName}</span>
                  ${!isField && p.resting ? '<span class="text-xs bg-slate-200 px-1 rounded font-bold">REST</span>' : ''}
                  ${p.fouledOut ? '<span class="text-xs bg-rose-100 text-rose-900 border border-rose-300 px-1 rounded font-bold">FOULED OUT</span>' : ''}
                </div>
@@ -2527,6 +3589,8 @@
       document.getElementById('benchCount').textContent = bCount;
       document.getElementById('benchList').innerHTML = benchHtml;
 
+      renderNotHere();
+
       // Manual swap bar
       if (manualOutId || manualInId) {
         document.getElementById('manualSwapBar').classList.remove('hidden');
@@ -2540,6 +3604,11 @@
 
       document.getElementById('scoreUs').textContent = state.match.score.us || 0;
       document.getElementById('scoreThem').textContent = state.match.score.them || 0;
+
+      const rosterModalEl = document.getElementById('rosterModal');
+      if (rosterModalEl && !rosterModalEl.classList.contains('hidden')) {
+        renderRosterModal();
+      }
 
       renderTimes();
     }
@@ -2626,12 +3695,162 @@
       const id = btn.getAttribute('data-id');
 
       if (action === 'toggleClock') toggleClock();
+      else if (action === 'openRoster') openRoster();
+      else if (action === 'closeRoster') closeRoster();
+      else if (action === 'toggleNotHere') {
+        isNotHereOpen = !isNotHereOpen;
+        renderNotHere();
+      }
+      else if (action === 'liveAddBench') handleLiveAdd(false);
+      else if (action === 'liveAddField') handleLiveAdd(true);
+      else if (action === 'quickArrivedBench' || action === 'rosterArrivedBench') {
+        clearRosterErrors();
+        dispatch('markPlayerArrived', id, { putOnField: false });
+      }
+      else if (action === 'quickArrivedField' || action === 'rosterArrivedField') {
+        clearRosterErrors();
+        dispatch('markPlayerArrived', id, { putOnField: true });
+      }
+      else if (action === 'enterFieldBtn') {
+        e.stopPropagation();
+        dispatch('enterField', id);
+      }
+      else if (action === 'rosterMarkAbsent') {
+        const r = state.roster.find(x => x.id === id);
+        const p = state.match.players[id];
+        if (!r || !p || p.absent) return;
+        clearRosterErrors();
+        if (!p.onField) {
+          dispatch('markPlayerAbsent', id, null);
+          return;
+        }
+        const now = Date.now();
+        const sportCfg = Engine.getSportConfig(state);
+        const activeMatch = Engine.hasMatchActivity(state);
+        const actionLabel = activeMatch ? 'Left Early' : 'Absent';
+        const replacementId = findRecommendedReplacementId(now);
+        if (replacementId) {
+          const inName = state.roster.find(x => x.id === replacementId)?.name || 'Bench Player';
+          showActionModal(
+            activeMatch ? `${r.name} Leaving Early?` : `Mark ${r.name} Absent?`,
+            `${r.name} is currently ${sportCfg.surfaceLabel.toLowerCase()}. Swap in ${inName} or leave the ${sportCfg.surfaceNoun.toLowerCase()} slot open?`,
+            [
+              { label: `Swap in ${inName} & Mark ${actionLabel}`, className: 'bg-blue-700', dataset: { action: 'confirmAbsentSwap', outId: id, inId: replacementId } },
+              { label: `Leave Slot Open & Mark ${actionLabel}`, className: 'bg-slate-200 text-slate-900', dataset: { action: 'confirmAbsentLeaveOpen', id } },
+              { label: 'Cancel', dataset: { action: 'closeModal' } }
+            ]
+          );
+        } else {
+          showActionModal(
+            activeMatch ? `${r.name} Leaving Early?` : `Mark ${r.name} Absent?`,
+            `${r.name} is currently ${sportCfg.surfaceLabel.toLowerCase()} and no eligible bench replacement is available. Mark ${actionLabel} and leave the ${sportCfg.surfaceNoun.toLowerCase()} slot open?`,
+            [
+              { label: 'Cancel', dataset: { action: 'closeModal' } },
+              { label: `Leave Slot Open & Mark ${actionLabel}`, className: 'bg-amber-400', dataset: { action: 'confirmAbsentLeaveOpen', id } }
+            ]
+          );
+        }
+      }
+      else if (action === 'confirmAbsentSwap') {
+        const outId = btn.getAttribute('data-out-id');
+        const inId = btn.getAttribute('data-in-id');
+        closeModal();
+        clearRosterErrors();
+        dispatch('markPlayerAbsent', outId, inId);
+      }
+      else if (action === 'confirmAbsentLeaveOpen') {
+        closeModal();
+        clearRosterErrors();
+        dispatch('markPlayerAbsent', id, null);
+      }
+      else if (action === 'rosterRemoveBtn') {
+        const r = state.roster.find(x => x.id === id);
+        const p = state.match.players[id];
+        if (!r || !p) return;
+        if (state.roster.length <= 1) {
+          showActionModal('Cannot Remove Player', 'Roster must have at least 1 player.', [
+            { label: 'OK', className: 'bg-slate-900', dataset: { action: 'closeModal' } }
+          ]);
+          return;
+        }
+        const now = Date.now();
+        if (Engine.playerHasMatchData(state, id, now)) {
+          if (p.absent) {
+            showActionModal(
+              'Match Stats Preserved',
+              `${r.name} already has recorded playtime or stats and is marked Left Early, so they stay on the roster to keep the Match Report intact.`,
+              [{ label: 'OK', className: 'bg-slate-900', dataset: { action: 'closeModal' } }]
+            );
+          } else {
+            const replacementId = p.onField ? findRecommendedReplacementId(now) : null;
+            if (p.onField && replacementId) {
+              const inName = state.roster.find(x => x.id === replacementId)?.name || 'Bench Player';
+              showActionModal(
+                `Keep ${r.name} in Match Report?`,
+                `${r.name} has recorded playtime or stats in this match. Mark them Left Early instead so the Match Report stays accurate.`,
+                [
+                  { label: `Swap in ${inName} & Mark Left Early`, className: 'bg-blue-700', dataset: { action: 'confirmAbsentSwap', outId: id, inId: replacementId } },
+                  { label: 'Leave Slot Open & Mark Left Early', className: 'bg-amber-400', dataset: { action: 'confirmAbsentLeaveOpen', id } },
+                  { label: 'Cancel', dataset: { action: 'closeModal' } }
+                ]
+              );
+            } else {
+              showActionModal(
+                `Keep ${r.name} in Match Report?`,
+                `${r.name} has recorded playtime or stats in this match. Removing them would erase their history. Mark them Left Early instead?`,
+                [
+                  { label: 'Cancel', dataset: { action: 'closeModal' } },
+                  { label: 'Mark Left Early', className: 'bg-amber-400', dataset: { action: 'confirmAbsentLeaveOpen', id } }
+                ]
+              );
+            }
+          }
+          return;
+        }
+        showActionModal(
+          `Remove ${r.name} from Team?`,
+          `${r.name} has no recorded stats in this match. Removing them deletes them from your saved team roster (Undo will be available right after).`,
+          [
+            { label: 'Cancel', dataset: { action: 'closeModal' } },
+            { label: 'Remove Player', className: 'bg-red-700', dataset: { action: 'confirmRemovePlayer', id } }
+          ]
+        );
+      }
+      else if (action === 'confirmRemovePlayer') {
+        closeModal();
+        const res = Engine.removePlayerFromRoster(state, id, Date.now());
+        if (res.ok) {
+          if (manualOutId === id) manualOutId = null;
+          if (manualInId === id) manualInId = null;
+          if (activeBadgeDrawerPid === id) activeBadgeDrawerPid = null;
+          clearRosterErrors();
+          state = res.state;
+          save();
+          manageWakeLock();
+          renderAll();
+        } else {
+          const errEl = document.getElementById('rosterErrors');
+          if (errEl) {
+            errEl.textContent = (res.errors || []).join(' • ');
+            errEl.classList.remove('hidden');
+          }
+        }
+      }
       else if (action === 'openSetup') openSetup();
       else if (action === 'closeSetup') closeSetup();
+      else if (action === 'openRosterFromSetup') {
+        closeSetup();
+        openRoster();
+      }
       else if (action === 'saveSetup') saveSetup();
       else if (action === 'selectSport') {
         const targetSport = btn.getAttribute('data-sport');
         switchSport(targetSport);
+      }
+      else if (action === 'confirmSwitchSport') {
+        const targetSport = btn.getAttribute('data-sport');
+        closeModal();
+        executeSwitchSport(targetSport);
       }
       else if (action === 'toggleBadgeDrawer') {
         activeBadgeDrawerPid = activeBadgeDrawerPid === id ? null : id;
@@ -2671,7 +3890,12 @@
       else if (action === 'advancePeriodConfirm') advancePeriodConfirm();
       else if (action === 'advancePeriod') { closeModal(); dispatch('advancePeriod'); }
       else if (action === 'resetMatchConfirm') resetMatchConfirm();
-      else if (action === 'resetMatch') { closeModal(); dispatch('resetMatch'); }
+      else if (action === 'resetMatch') {
+        closeModal();
+        closeSetup();
+        closeRoster();
+        dispatch('resetMatch');
+      }
       else if (action === 'closeModal') closeModal();
       else if (action === 'makeSub') {
         const rCard = document.getElementById('recommendCard');
@@ -2694,11 +3918,11 @@
           if (rec.inId) {
             const rName = state.roster.find(r => r.id === id)?.name || 'Player';
             const inName = state.roster.find(r => r.id === rec.inId)?.name || 'Bench Player';
-            showModal(`${rName} Fouled Out`, `Sub in ${inName} now?`, `
-              <button class="sun-btn bg-blue-700 text-white" data-action="confirmFoulOutSub" data-out-id="${id}" data-in-id="${rec.inId}">Swap & Mark Fouled Out</button>
-              <button class="sun-btn bg-slate-200 text-slate-900" data-action="confirmFoulOutOnly" data-id="${id}">Mark Fouled Out Only</button>
-              <button class="sun-btn" data-action="closeModal">Cancel</button>
-            `);
+            showActionModal(`${rName} Fouled Out`, `Sub in ${inName} now?`, [
+              { label: 'Swap & Mark Fouled Out', className: 'bg-blue-700', dataset: { action: 'confirmFoulOutSub', outId: id, inId: rec.inId } },
+              { label: 'Mark Fouled Out Only', className: 'bg-slate-200 text-slate-900', dataset: { action: 'confirmFoulOutOnly', id } },
+              { label: 'Cancel', dataset: { action: 'closeModal' } }
+            ]);
           } else {
             dispatch('toggleFoulOut', id);
           }
@@ -2730,8 +3954,13 @@
       }
       else if (action === 'openMatchLog') {
         closeModal();
+        isPlayByPlayOpen = false;
         renderMatchLog();
         document.getElementById('matchLogModal').classList.remove('hidden');
+      }
+      else if (action === 'togglePlayByPlay') {
+        isPlayByPlayOpen = !isPlayByPlayOpen;
+        renderMatchLog();
       }
       else if (action === 'closeMatchLog') {
         document.getElementById('matchLogModal').classList.add('hidden');
@@ -2766,19 +3995,32 @@
           manualOutId = null; manualInId = null;
         }
       }
-      else if (action === 'draftAddPlayer') {
-        const input = document.getElementById('draftPlayerName');
-        const name = input.value.trim();
-        if (name) {
-          draft.roster.push({ id: Engine.generateId(), name });
-          input.value = '';
-          renderSetup();
-        }
-      }
+      else if (action === 'draftAddPlayer') handleDraftAddPlayer();
       else if (action === 'draftToggleStarter') {
+        if (!draft || Engine.hasMatchActivity(state)) return;
+        if ((draft.absentIds || []).includes(id)) return;
         const idx = draft.starterIds.indexOf(id);
         if (idx >= 0) draft.starterIds.splice(idx, 1);
         else if (draft.starterIds.length < draft.settings.fieldSize) draft.starterIds.push(id);
+        renderSetup();
+      }
+      else if (action === 'draftToggleAbsent') {
+        if (!draft || Engine.hasMatchActivity(state)) return;
+        draft.absentIds = draft.absentIds || [];
+        const idx = draft.absentIds.indexOf(id);
+        if (idx >= 0) {
+          draft.absentIds.splice(idx, 1);
+        } else {
+          draft.absentIds.push(id);
+          draft.starterIds = (draft.starterIds || []).filter(sid => sid !== id);
+        }
+        renderSetup();
+      }
+      else if (action === 'draftRemovePlayer') {
+        if (!draft || Engine.hasMatchActivity(state)) return;
+        draft.roster = (draft.roster || []).filter(r => r.id !== id);
+        draft.starterIds = (draft.starterIds || []).filter(sid => sid !== id);
+        draft.absentIds = (draft.absentIds || []).filter(aid => aid !== id);
         renderSetup();
       }
       else if (action === 'downloadHtml') {
@@ -2790,30 +4032,81 @@
       }
       else if (action === 'reload') window.location.reload();
       else if (action === 'resetApp') {
-        if (confirm('Are you sure you want to delete ALL data?')) {
-          localStorage.clear();
-          window.location.reload();
-        }
+        showActionModal(
+          'Delete All App Data?',
+          'This permanently deletes all saved Soccer and Basketball teams and match data.',
+          [
+            { label: 'Cancel', dataset: { action: 'closeModal' } },
+            { label: 'Delete All Data', className: 'bg-red-700', dataset: { action: 'confirmResetApp' } }
+          ]
+        );
+      }
+      else if (action === 'confirmResetApp') {
+        closeModal();
+        localStorage.clear();
+        window.location.reload();
       }
     });
 
-    // Inject Rest buttons onto bench cards
+    document.getElementById('livePlayerName').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleLiveAdd(false);
+      }
+    });
+
+    document.getElementById('draftPlayerName').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleDraftAddPlayer();
+      }
+    });
+
+    [
+      ['draftFieldSize', 'fieldSize'],
+      ['draftMinutes', 'periodMinutes']
+    ].forEach(([elId, key]) => {
+      const el = document.getElementById(elId);
+      const syncSetting = (e) => {
+        if (!draft || Engine.hasMatchActivity(state)) return;
+        const val = parseInt(e.target.value, 10);
+        if (!Number.isNaN(val)) {
+          draft.settings[key] = val;
+          updateSetupCounts();
+        }
+      };
+      el.addEventListener('input', syncSetting);
+      el.addEventListener('change', syncSetting);
+    });
+
+    // Inject Rest and open-slot Enter Field/Court buttons onto bench cards
     const origRenderAll = renderAll;
     renderAll = function () {
       origRenderAll();
+      const sportCfg = Engine.getSportConfig(state);
+      const hasOpenSlot = Engine._countOnField(state) < state.settings.fieldSize;
       const benchCards = document.getElementById('benchList').querySelectorAll('.player-card');
       benchCards.forEach(card => {
         const id = card.getAttribute('data-id');
         const p = state.match.players[id];
-        const restBtn = document.createElement('button');
-        restBtn.className = "sun-btn bg-slate-200 mt-2";
-        restBtn.style.padding = "0.25rem 0.5rem";
-        restBtn.style.minHeight = "28px";
-        restBtn.style.fontSize = "10px";
-        restBtn.dataset.action = "toggleRestBtn";
-        restBtn.dataset.id = id;
-        restBtn.textContent = p.resting ? "UNREST" : "REST";
-        card.querySelector('div').appendChild(restBtn);
+        if (!p || p.absent) return;
+        const container = card.querySelector('div');
+        const restBtn = createEl('button', {
+          className: 'sun-btn bg-slate-200 mt-2',
+          style: { padding: '0.25rem 0.5rem', minHeight: '28px', fontSize: '10px' },
+          dataset: { action: 'toggleRestBtn', id },
+          textContent: p.resting ? 'UNREST' : 'REST'
+        });
+        container.appendChild(restBtn);
+        if (hasOpenSlot && !p.resting && !p.fouledOut) {
+          const enterBtn = createEl('button', {
+            className: 'sun-btn bg-blue-700 mt-2',
+            style: { padding: '0.25rem 0.6rem', minHeight: '28px', fontSize: '10px', marginLeft: '0.25rem' },
+            dataset: { action: 'enterFieldBtn', id },
+            textContent: `+ ${sportCfg.surfaceNoun}`
+          });
+          container.appendChild(enterBtn);
+        }
       });
     };
 
