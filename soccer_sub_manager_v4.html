@@ -164,6 +164,40 @@
       color: white;
     }
 
+    .bg-red-700 {
+      background-color: #b91c1c;
+      color: #ffffff;
+    }
+
+    .bg-slate-200 {
+      background-color: #e2e8f0;
+      color: #0f172a;
+    }
+
+    .bg-amber-bg {
+      background-color: var(--amber-bg);
+    }
+
+    .bg-cobalt-bg {
+      background-color: var(--cobalt-bg);
+    }
+
+    .text-white {
+      color: #ffffff;
+    }
+
+    .text-slate-700 {
+      color: #334155;
+    }
+
+    .text-slate-900 {
+      color: #0f172a;
+    }
+
+    .block {
+      display: block;
+    }
+
     .text-xs {
       font-size: 0.75rem;
     }
@@ -485,7 +519,7 @@
       position: fixed;
       inset: 0;
       background: rgba(0, 0, 0, 0.7);
-      z-index: 50;
+      z-index: 80;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -507,6 +541,30 @@
       z-index: 60;
       overflow-y: auto;
       padding: 1rem;
+    }
+
+    #rosterModal {
+      position: fixed;
+      inset: 0;
+      background: #ffffff;
+      z-index: 60;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+
+    .danger-zone {
+      margin-top: 1.5rem;
+      padding: 0.875rem;
+      border: 2px solid #b91c1c;
+      border-radius: 0.75rem;
+      background: #fff1f2;
+    }
+
+    .not-here-toggle {
+      min-height: 42px;
+      font-size: 13px;
+      background-color: #f1f5f9;
+      color: #0f172a;
     }
 
     .setup-input {
@@ -714,6 +772,7 @@
         </div>
         <div class="flex items-center gap-2">
           <button data-action="toggleClock" id="clockBtn" class="sun-btn bg-emerald-600">START</button>
+          <button data-action="openRoster" id="openRosterBtn" class="sun-btn" aria-label="Roster">👥</button>
           <button data-action="openSetup" class="sun-btn" aria-label="Setup">⚙️</button>
         </div>
       </div>
@@ -738,6 +797,16 @@
     <div class="mt-4 mb-4">
       <div class="text-xs font-black uppercase mb-2">Bench (<span id="benchCount">0</span>)</div>
       <div id="benchList" class="card-list"></div>
+    </div>
+
+    <div id="notHereSection" class="mt-4 mb-4 hidden">
+      <button data-action="toggleNotHere" id="notHereToggleBtn"
+        class="sun-btn not-here-toggle w-full flex justify-between items-center bg-slate-100"
+        style="min-height:42px; font-size:13px;">
+        <span id="notHereToggleLabel">Not Here Yet (0)</span>
+        <span id="notHereChevron">▸</span>
+      </button>
+      <div id="notHereList" class="card-list mt-2 hidden"></div>
     </div>
 
     <div id="recommendCard" class="sun-card bg-cobalt-bg hidden">
@@ -846,6 +915,45 @@
       <div class="mt-4 flex gap-2">
         <button data-action="saveSetup" class="sun-btn bg-emerald-600 w-full">Save</button>
         <button data-action="downloadHtml" class="sun-btn" aria-label="Download App HTML">💾</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="rosterModal" class="hidden">
+    <div class="max-w-md">
+      <div class="flex justify-between items-center mb-2">
+        <div>
+          <h2 class="font-black text-xl" style="margin:0;">Roster &amp; Attendance</h2>
+          <div id="rosterSummaryCount" class="text-xs font-bold text-slate-500">0 Present • 0 Absent</div>
+        </div>
+        <button data-action="closeRoster" class="sun-btn" aria-label="Close Roster">✕</button>
+      </div>
+
+      <div class="text-xs font-bold text-slate-500 mb-3">
+        Adding, checking in, or marking players absent never resets the clock or score.
+      </div>
+
+      <div id="rosterErrors" class="hidden text-sm font-bold mb-3" style="color:#b91c1c;"></div>
+
+      <div class="mb-4">
+        <label for="livePlayerName" class="text-xs font-black uppercase block">Quick-Add Player</label>
+        <div class="flex gap-2 mt-1">
+          <input type="text" id="livePlayerName" class="setup-input" style="margin-top:0;" placeholder="Player name">
+        </div>
+        <div class="flex gap-2 mt-2">
+          <button data-action="liveAddBench" id="liveAddBenchBtn" class="sun-btn bg-emerald-600 w-full" style="min-height:42px;">+ Add to Bench</button>
+          <button data-action="liveAddField" id="liveAddFieldBtn" class="sun-btn bg-blue-700 w-full hidden" style="min-height:42px;">+ Add to Field</button>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <div class="text-xs font-black uppercase mb-2">Present (<span id="rosterPresentCount">0</span>)</div>
+        <div id="rosterPresentList" class="card-list"></div>
+      </div>
+
+      <div id="rosterAbsentSection" class="mb-4 hidden">
+        <div class="text-xs font-black uppercase mb-2">Not Here Yet / Absent (<span id="rosterAbsentCount">0</span>)</div>
+        <div id="rosterAbsentList" class="card-list"></div>
       </div>
     </div>
   </div>
@@ -2186,6 +2294,50 @@
     let activeBadgeDrawerPid = null;
     let lastMidSubStatus = null;
     let isPlayByPlayOpen = false;
+    let isNotHereOpen = false;
+
+    function escHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function createEl(tag, props = {}, children = []) {
+      const node = document.createElement(tag);
+      for (const [k, v] of Object.entries(props)) {
+        if (k === 'className') node.className = v;
+        else if (k === 'textContent') node.textContent = v;
+        else if (k === 'style' && typeof v === 'object') Object.assign(node.style, v);
+        else if (k === 'dataset' && typeof v === 'object') {
+          for (const [dk, dv] of Object.entries(v)) {
+            if (dv !== undefined && dv !== null) node.dataset[dk] = String(dv);
+          }
+        } else if (v !== undefined && v !== null) {
+          node.setAttribute(k, String(v));
+        }
+      }
+      for (const child of children) {
+        if (child === null || child === undefined) continue;
+        node.appendChild(typeof child === 'string' ? document.createTextNode(child) : child);
+      }
+      return node;
+    }
+
+    function showActionModal(title, msg, buttons) {
+      document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalMessage').textContent = msg;
+      const wrap = document.getElementById('modalButtons');
+      wrap.className = buttons.length > 2 ? 'flex-col gap-2' : 'flex justify-between gap-2';
+      wrap.replaceChildren(...buttons.map(b => createEl('button', {
+        className: `sun-btn ${buttons.length > 2 ? 'w-full ' : ''}${b.className || ''}`.trim(),
+        textContent: b.label,
+        dataset: b.dataset || {}
+      })));
+      document.getElementById('modalOverlay').classList.remove('hidden');
+    }
 
     // Save initial HTML immediately before any render
     const APP_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
@@ -2276,7 +2428,11 @@
     document.addEventListener('visibilitychange', manageWakeLock);
 
     function dispatch(actionName, ...args) {
-      if (['substitute', 'substituteBatch', 'foulOutAndSub', 'toggleFoulOut', 'advancePeriod', 'resetMatch', 'undo'].includes(actionName)) {
+      if ([
+        'substitute', 'substituteBatch', 'foulOutAndSub', 'toggleFoulOut',
+        'advancePeriod', 'resetMatch', 'undo',
+        'markPlayerAbsent', 'markPlayerArrived', 'enterField'
+      ].includes(actionName)) {
         manualOutId = null;
         manualInId = null;
       }
@@ -2290,7 +2446,9 @@
     function showModal(title, msg, buttonsHtml) {
       document.getElementById('modalTitle').textContent = title;
       document.getElementById('modalMessage').textContent = msg;
-      document.getElementById('modalButtons').innerHTML = buttonsHtml;
+      const wrap = document.getElementById('modalButtons');
+      wrap.className = 'flex justify-between gap-2';
+      wrap.innerHTML = buttonsHtml;
       document.getElementById('modalOverlay').classList.remove('hidden');
     }
     function closeModal() {
@@ -2380,8 +2538,8 @@
         const btnClass = isStarter ? "bg-emerald-600" : "bg-slate-200 text-slate-900";
         return `
           <div class="player-card">
-             <span class="font-black text-lg">${r.name}</span>
-             <button data-action="draftToggleStarter" data-id="${r.id}" class="sun-btn ${btnClass}" style="min-height:36px; font-size:12px;">
+             <span class="font-black text-lg">${escHtml(r.name)}</span>
+             <button data-action="draftToggleStarter" data-id="${escHtml(r.id)}" class="sun-btn ${btnClass}" style="min-height:36px; font-size:12px;">
                ${isStarter ? 'Starter' : 'Bench'}
              </button>
           </div>
@@ -2410,9 +2568,246 @@
         closeSetup();
       } else {
         const errDiv = document.getElementById('setupErrors');
-        errDiv.innerHTML = result.errors.join('<br>');
+        errDiv.innerHTML = result.errors.map(escHtml).join('<br>');
         errDiv.classList.remove('hidden');
       }
+    }
+
+    function clearRosterErrors() {
+      const errEl = document.getElementById('rosterErrors');
+      if (errEl) {
+        errEl.textContent = '';
+        errEl.classList.add('hidden');
+      }
+    }
+
+    function findRecommendedReplacementId(now) {
+      let rec = Engine.recommend(state, now);
+      if (!rec.inId && rec.status === 'all-skipped') {
+        rec = Engine.recommend({ ...state, match: { ...state.match, skipIds: [] } }, now);
+      }
+      return rec.inId || null;
+    }
+
+    function openRoster() {
+      clearRosterErrors();
+      const input = document.getElementById('livePlayerName');
+      if (input) input.value = '';
+      renderRosterModal();
+      document.getElementById('rosterModal').classList.remove('hidden');
+    }
+
+    function closeRoster() {
+      clearRosterErrors();
+      document.getElementById('rosterModal').classList.add('hidden');
+    }
+
+    function renderRosterModal() {
+      const sportCfg = Engine.getSportConfig(state);
+      const hasOpenSlot = Engine._countOnField(state) < state.settings.fieldSize;
+      const activeMatch = Engine.hasMatchActivity(state);
+
+      const addFieldBtn = document.getElementById('liveAddFieldBtn');
+      if (addFieldBtn) {
+        addFieldBtn.textContent = `+ Add to ${sportCfg.surfaceNoun}`;
+        addFieldBtn.classList.toggle('hidden', !hasOpenSlot);
+      }
+
+      const present = [];
+      const absent = [];
+      for (const r of state.roster) {
+        const p = state.match.players[r.id];
+        if (p && p.absent) absent.push({ r, p });
+        else if (p) present.push({ r, p });
+      }
+
+      document.getElementById('rosterSummaryCount').textContent = `${present.length} Present • ${absent.length} Absent`;
+      document.getElementById('rosterPresentCount').textContent = present.length;
+      document.getElementById('rosterAbsentCount').textContent = absent.length;
+      document.getElementById('rosterAbsentSection').classList.toggle('hidden', absent.length === 0);
+
+      const presentList = document.getElementById('rosterPresentList');
+      if (present.length === 0) {
+        presentList.replaceChildren(createEl('div', {
+          className: 'text-xs font-bold text-slate-400',
+          textContent: 'No present players.'
+        }));
+      } else {
+        presentList.replaceChildren(...present.map(({ r, p }) => {
+          let statusLabel = 'Bench';
+          let statusStyle = { background: '#f1f5f9', color: '#475569' };
+          if (p.onField) {
+            statusLabel = sportCfg.surfaceLabel;
+            statusStyle = { background: '#dcfce7', color: '#166534' };
+          } else if (p.fouledOut) {
+            statusLabel = 'Fouled Out';
+            statusStyle = { background: '#ffe4e6', color: '#881337' };
+          } else if (p.resting) {
+            statusLabel = 'Rest';
+            statusStyle = { background: '#e2e8f0', color: '#334155' };
+          }
+
+          return createEl('div', {
+            className: 'player-card',
+            style: { cursor: 'default', gap: '0.5rem' },
+            dataset: { id: r.id }
+          }, [
+            createEl('div', { style: { flex: '1', minWidth: '0' } }, [
+              createEl('div', { className: 'font-black text-base truncate', textContent: r.name }),
+              createEl('div', { className: 'flex items-center gap-2 mt-1' }, [
+                createEl('span', {
+                  className: 'text-xs font-bold px-2 py-0-5 rounded-md',
+                  style: statusStyle,
+                  textContent: statusLabel
+                })
+              ])
+            ]),
+            createEl('div', { className: 'flex items-center gap-2', style: { flexShrink: '0' } }, [
+              createEl('button', {
+                className: 'sun-btn bg-amber-400',
+                style: { minHeight: '36px', padding: '0 0.65rem', fontSize: '12px', whiteSpace: 'nowrap' },
+                dataset: { action: 'rosterMarkAbsent', id: r.id },
+                textContent: activeMatch ? 'Left Early' : 'Absent'
+              }),
+              createEl('button', {
+                className: 'sun-btn bg-rose-100 text-rose-900',
+                style: { minHeight: '36px', minWidth: '36px', padding: '0 0.5rem', fontSize: '14px' },
+                'aria-label': `Remove ${r.name}`,
+                title: 'Remove from Team',
+                dataset: { action: 'rosterRemoveBtn', id: r.id },
+                textContent: '🗑'
+              })
+            ])
+          ]);
+        }));
+      }
+
+      const absentList = document.getElementById('rosterAbsentList');
+      absentList.replaceChildren(...absent.map(({ r, p }) => {
+        const leftEarly = p.departedAtMs !== null && p.departedAtMs !== undefined;
+        const actionBtns = [
+          createEl('button', {
+            className: 'sun-btn bg-emerald-600',
+            style: { minHeight: '36px', padding: '0 0.65rem', fontSize: '12px', whiteSpace: 'nowrap' },
+            dataset: { action: 'rosterArrivedBench', id: r.id },
+            textContent: '✓ Arrived'
+          }),
+          hasOpenSlot ? createEl('button', {
+            className: 'sun-btn bg-blue-700',
+            style: { minHeight: '36px', padding: '0 0.65rem', fontSize: '12px', whiteSpace: 'nowrap' },
+            dataset: { action: 'rosterArrivedField', id: r.id },
+            textContent: `→ ${sportCfg.surfaceNoun}`
+          }) : null,
+          createEl('button', {
+            className: 'sun-btn bg-rose-100 text-rose-900',
+            style: { minHeight: '36px', minWidth: '36px', padding: '0 0.5rem', fontSize: '14px' },
+            'aria-label': `Remove ${r.name}`,
+            title: 'Remove from Team',
+            dataset: { action: 'rosterRemoveBtn', id: r.id },
+            textContent: '🗑'
+          })
+        ];
+
+        return createEl('div', {
+          className: 'player-card',
+          style: { cursor: 'default', gap: '0.5rem', background: '#f8fafc' },
+          dataset: { id: r.id }
+        }, [
+          createEl('div', { style: { flex: '1', minWidth: '0' } }, [
+            createEl('div', { className: 'font-black text-base truncate', textContent: r.name }),
+            createEl('div', { className: 'flex items-center gap-2 mt-1' }, [
+              createEl('span', {
+                className: 'text-xs font-bold px-2 py-0-5 rounded-md',
+                style: leftEarly
+                  ? { background: '#fef3c7', color: '#92400e' }
+                  : { background: '#e2e8f0', color: '#475569' },
+                textContent: leftEarly ? 'Left Early' : 'Not Here Yet'
+              })
+            ])
+          ]),
+          createEl('div', {
+            className: 'flex items-center gap-2 flex-wrap',
+            style: { flexShrink: '0', justifyContent: 'flex-end' }
+          }, actionBtns)
+        ]);
+      }));
+    }
+
+    function renderNotHere() {
+      const section = document.getElementById('notHereSection');
+      const list = document.getElementById('notHereList');
+      const label = document.getElementById('notHereToggleLabel');
+      const chevron = document.getElementById('notHereChevron');
+      if (!section || !list || !label || !chevron) return;
+
+      const absentRoster = state.roster.filter(r => state.match.players[r.id]?.absent);
+      if (absentRoster.length === 0) {
+        isNotHereOpen = false;
+        section.classList.add('hidden');
+        list.classList.add('hidden');
+        list.replaceChildren();
+        return;
+      }
+
+      const sportCfg = Engine.getSportConfig(state);
+      const hasOpenSlot = Engine._countOnField(state) < state.settings.fieldSize;
+
+      section.classList.remove('hidden');
+      label.textContent = `Not Here Yet (${absentRoster.length})`;
+      chevron.textContent = isNotHereOpen ? '▾' : '▸';
+      list.classList.toggle('hidden', !isNotHereOpen);
+
+      list.replaceChildren(...absentRoster.map(r => {
+        const p = state.match.players[r.id];
+        const leftEarly = p && p.departedAtMs !== null && p.departedAtMs !== undefined;
+        return createEl('div', {
+          className: 'player-card',
+          style: { cursor: 'default', gap: '0.5rem', background: '#f8fafc', padding: '0.6rem 0.75rem' },
+          dataset: { id: r.id }
+        }, [
+          createEl('div', { style: { flex: '1', minWidth: '0' } }, [
+            createEl('div', { className: 'font-black text-base truncate', textContent: r.name }),
+            leftEarly ? createEl('span', {
+              className: 'text-xs font-bold px-2 py-0-5 rounded-md',
+              style: { background: '#fef3c7', color: '#92400e', display: 'inline-block', marginTop: '0.25rem' },
+              textContent: 'Left Early'
+            }) : null
+          ]),
+          createEl('div', { className: 'flex items-center gap-2', style: { flexShrink: '0' } }, [
+            createEl('button', {
+              className: 'sun-btn bg-emerald-600',
+              style: { minHeight: '36px', padding: '0 0.65rem', fontSize: '12px', whiteSpace: 'nowrap' },
+              dataset: { action: 'quickArrivedBench', id: r.id },
+              textContent: '✓ Arrived'
+            }),
+            hasOpenSlot ? createEl('button', {
+              className: 'sun-btn bg-blue-700',
+              style: { minHeight: '36px', padding: '0 0.65rem', fontSize: '12px', whiteSpace: 'nowrap' },
+              dataset: { action: 'quickArrivedField', id: r.id },
+              textContent: `→ ${sportCfg.surfaceNoun}`
+            }) : null
+          ])
+        ]);
+      }));
+    }
+
+    function handleLiveAdd(putOnField) {
+      const input = document.getElementById('livePlayerName');
+      const errEl = document.getElementById('rosterErrors');
+      const res = Engine.addPlayerLive(state, input ? input.value : '', { putOnField: Boolean(putOnField) }, Date.now());
+      if (!res.ok) {
+        if (errEl) {
+          errEl.textContent = res.errors.join(' • ');
+          errEl.classList.remove('hidden');
+        }
+        return;
+      }
+      clearRosterErrors();
+      if (input) input.value = '';
+      state = res.state;
+      save();
+      manageWakeLock();
+      renderAll();
     }
 
     function renderMatchLog() {
@@ -2511,7 +2906,7 @@
           return `
             <tr style="border-bottom:1px solid #f1f5f9; background:${rowBg};">
               <td style="padding:6px 4px; text-align:left; vertical-align:middle;">
-                <div style="font-weight:900; font-size:13px; color:#0f172a; line-height:1.2;">${p.name}${p.fouledOut ? ' <span style="font-size:10px; color:#be123c; font-weight:800;">(FO)</span>' : ''}</div>
+                <div style="font-weight:900; font-size:13px; color:#0f172a; line-height:1.2;">${escHtml(p.name)}${p.fouledOut ? ' <span style="font-size:10px; color:#be123c; font-weight:800;">(FO)</span>' : ''}</div>
                 ${subLine ? `<div style="display:flex; flex-wrap:wrap; align-items:center; gap:3px; margin-top:2px; font-size:11px;">${subLine}</div>` : ''}
               </td>
               <td class="font-mono-nums" style="padding:5px 3px; text-align:center; font-size:11px; color:#475569; font-weight:700; white-space:nowrap;">${fmt(p.totalMs)}</td>
@@ -2560,9 +2955,9 @@
         } else {
           awardsEl.innerHTML = metrics.impactAwards.map(a => `
             <div style="background:#fefce8; border:2px solid #facc15; border-radius:10px; padding:8px 10px; display:flex; flex-direction:column; justify-content:space-between;">
-              <div style="font-size:11px; font-weight:900; text-transform:uppercase; color:#854d0e;">${a.icon} ${a.awardTitle}</div>
-              <div style="font-size:15px; font-weight:900; color:#0f172a; margin-top:2px;">${a.leaderName}</div>
-              <div style="font-size:11px; font-weight:700; color:#a16207; margin-top:2px;">${a.count}× ${Engine.BADGE_MAP[a.badgeType]?.title || a.subtitle}</div>
+              <div style="font-size:11px; font-weight:900; text-transform:uppercase; color:#854d0e;">${a.icon} ${escHtml(a.awardTitle)}</div>
+              <div style="font-size:15px; font-weight:900; color:#0f172a; margin-top:2px;">${escHtml(a.leaderName)}</div>
+              <div style="font-size:11px; font-weight:700; color:#a16207; margin-top:2px;">${a.count}× ${escHtml(Engine.BADGE_MAP[a.badgeType]?.title || a.subtitle)}</div>
             </div>
           `).join('');
         }
@@ -2591,7 +2986,7 @@
             const rowBg = isUs ? '#ecfdf5' : '#fff1f2';
             const rowBorder = isUs ? '#a7f3d0' : '#fecdd3';
             const whoHtml = isUs
-              ? `<span class="text-emerald-900 font-black">${evt.playerName} ${isBball ? '🏀 +' + evt.points : '⚽'}</span>`
+              ? `<span class="text-emerald-900 font-black">${escHtml(evt.playerName)} ${isBball ? '🏀 +' + evt.points : '⚽'}</span>`
               : `<span class="text-rose-900 font-bold">Them ${isBball ? '🏀 +' + evt.points : '⚽'}</span>`;
             return `
               <div class="flex justify-between items-center rounded-md border" style="background:${rowBg}; border-color:${rowBorder}; padding:5px 8px;">
@@ -2601,7 +2996,7 @@
                 </div>
                 <div class="flex items-center gap-1" style="white-space:nowrap;">
                   <span class="font-mono-nums font-black rounded" style="background:#e2e8f0; color:#0f172a; padding:2px 6px;">${evt.runningUs} - ${evt.runningThem}</span>
-                  <span data-action="deleteEventBtn" data-id="${evt.id}" class="ml-1 text-slate-500 cursor-pointer font-black px-1" title="Delete">&times;</span>
+                  <span data-action="deleteEventBtn" data-id="${escHtml(evt.id)}" class="ml-1 text-slate-500 cursor-pointer font-black px-1" title="Delete">&times;</span>
                 </div>
               </div>
             `;
@@ -2609,37 +3004,82 @@
         }
       }
 
-      // 6. Playtime Summary (Unchanged per user request)
+      // 6. Playtime Summary (Safe DOM + Per-Player Prorated Targets & Absentee Handling)
       const playtimeEl = document.getElementById('logPlaytime');
       const maxMs = metrics.maxPlayerMs || 1;
-      const targetPct = Math.min(100, Math.max(0, Math.round((metrics.targetMs / maxMs) * 100)));
 
       playtimeEl.className = "flex flex-col gap-3";
-      playtimeEl.innerHTML = `
-        <div style="font-size:12px; font-weight:bold; color:#64748b; margin-bottom:4px;">
-          Equal Target Share: ${fmt(metrics.targetMs)} • Total Badges: ${metrics.totalBadges} 🎉
-        </div>
-      ` + metrics.players.map(p => {
+      const headerNote = createEl('div', {
+        style: { fontSize: '12px', fontWeight: 'bold', color: '#64748b', marginBottom: '4px' },
+        textContent: `Equal Target Share: ${fmt(metrics.targetMs)} • Total Badges: ${metrics.totalBadges} 🎉`
+      });
+
+      const playerRows = metrics.players.map(p => {
+        if (p.absentAllGame) {
+          return createEl('div', { className: 'gauge-row' }, [
+            createEl('div', { className: 'gauge-header', style: { opacity: '0.65', marginBottom: '0' } }, [
+              createEl('span', { textContent: p.name }),
+              createEl('span', {
+                className: 'text-xs font-bold px-2 py-0-5 rounded-md',
+                style: { background: '#f1f5f9', color: '#475569' },
+                textContent: 'Absent'
+              })
+            ])
+          ]);
+        }
+
         const widthPct = Math.min(100, Math.max(0, Math.round((p.totalMs / maxMs) * 100)));
+        const playerTargetPct = Math.min(100, Math.max(0, Math.round((p.targetMs / maxMs) * 100)));
+
+        const nameChildren = [
+          `${p.name}${p.fouledOut ? ' (Fouled Out)' : ''}`,
+          p.arrivedLate ? createEl('span', {
+            style: { fontSize: '11px', fontWeight: '700', color: '#1d4ed8', marginLeft: '4px' },
+            textContent: '(Late Arrival)'
+          }) : null,
+          p.leftEarly ? createEl('span', {
+            style: { fontSize: '11px', fontWeight: '700', color: '#b45309', marginLeft: '4px' },
+            textContent: '(Left Early)'
+          }) : null
+        ];
+
         const badgePills = Object.entries(p.badgeCounts)
           .filter(([_, count]) => count > 0)
-          .map(([type, count]) => `<span class="badge-pill">${Engine.BADGE_MAP[type].icon} ${Engine.BADGE_MAP[type].title}${count > 1 ? ' x' + count : ''}</span>`)
-          .join('');
+          .map(([type, count]) => createEl('span', {
+            className: 'badge-pill',
+            textContent: `${Engine.BADGE_MAP[type].icon} ${Engine.BADGE_MAP[type].title}${count > 1 ? ' x' + count : ''}`
+          }));
 
-        return `
-          <div class="gauge-row">
-            <div class="gauge-header">
-              <span>${p.name}${p.fouledOut ? ' (Fouled Out)' : ''}</span>
-              <span class="font-mono-nums">${fmt(p.totalMs)}</span>
-            </div>
-            <div class="gauge-bar-track">
-              <div class="gauge-bar-fill ${p.fairnessStatus}" style="width: ${widthPct}%;"></div>
-              <div class="target-line-indicator" style="left: ${targetPct}%;" title="Equal Share Target"></div>
-            </div>
-            <div class="recap-badges-list mt-1">${badgePills || '<span style="font-size:11px; opacity:0.6; font-style:italic;">No badges yet</span>'}</div>
-          </div>
-        `;
-      }).join('');
+        return createEl('div', { className: 'gauge-row' }, [
+          createEl('div', { className: 'gauge-header' }, [
+            createEl('span', {}, nameChildren),
+            createEl('span', { className: 'font-mono-nums', textContent: fmt(p.totalMs) })
+          ]),
+          createEl('div', { className: 'gauge-bar-track' }, [
+            createEl('div', {
+              className: `gauge-bar-fill ${p.fairnessStatus}`,
+              style: { width: `${widthPct}%` }
+            }),
+            createEl('div', {
+              className: 'target-line-indicator',
+              style: { left: `${playerTargetPct}%` },
+              title: (p.arrivedLate || p.leftEarly)
+                ? `Prorated Target: ${fmt(p.targetMs)}`
+                : 'Equal Share Target'
+            })
+          ]),
+          createEl('div', { className: 'recap-badges-list mt-1' },
+            badgePills.length > 0
+              ? badgePills
+              : [createEl('span', {
+                  style: { fontSize: '11px', opacity: '0.6', fontStyle: 'italic' },
+                  textContent: 'No badges yet'
+                })]
+          )
+        ]);
+      });
+
+      playtimeEl.replaceChildren(headerNote, ...playerRows);
     }
 
     function generateParentSummaryText(metrics) {
@@ -2648,14 +3088,16 @@
         ? `Great basketball game today! 🏀\nEveryone got equal court time (~${Math.round(metrics.targetMs / 60000)} mins each).\n\n🌟 Sportsmanship Badges Earned Today:\n`
         : `Great soccer match today! 🐅\nEveryone got equal play time (~${Math.round(metrics.targetMs / 60000)} mins each).\n\n🌟 Sportsmanship Badges Earned Today:\n`;
 
-      metrics.players.forEach(p => {
-        const badges = Object.entries(p.badgeCounts)
-          .filter(([_, count]) => count > 0)
-          .map(([type, count]) => `${Engine.BADGE_MAP[type].icon} ${Engine.BADGE_MAP[type].title}${count > 1 ? ' x' + count : ''}`)
-          .join(', ');
+      metrics.players
+        .filter(p => !p.absentAllGame)
+        .forEach(p => {
+          const badges = Object.entries(p.badgeCounts)
+            .filter(([_, count]) => count > 0)
+            .map(([type, count]) => `${Engine.BADGE_MAP[type].icon} ${Engine.BADGE_MAP[type].title}${count > 1 ? ' x' + count : ''}`)
+            .join(', ');
 
-        text += `• ${p.name}: ${badges || 'Great Team Play'}\n`;
-      });
+          text += `• ${p.name}: ${badges || 'Great Team Play'}\n`;
+        });
 
       text += isBball
         ? `\nThanks coaches & parents for a fantastic game! 🏀`
@@ -2708,6 +3150,7 @@
         const inNames = batch.inIds
           .map(id => state.roster.find(r => r.id === id)?.name)
           .filter(Boolean)
+          .map(escHtml)
           .join(', ') || 'bench players';
         midBanner.className = "sun-card bg-amber-bg flex items-center justify-between gap-2";
         midBanner.innerHTML = `
@@ -2830,12 +3273,12 @@
           const outListHtml = batch.outIds.map(outId => {
             const name = state.roster.find(r => r.id === outId)?.name || '--';
             const t = Engine.times(state, outId, now);
-            return `<div class="mb-1"><span class="font-black text-base">${name}</span> <span class="text-xs font-mono-nums">(Shift: <span data-t="recOutShift" data-id="${outId}">${fmt(t.shiftMs)}</span>)</span></div>`;
+            return `<div class="mb-1"><span class="font-black text-base">${escHtml(name)}</span> <span class="text-xs font-mono-nums">(Shift: <span data-t="recOutShift" data-id="${escHtml(outId)}">${fmt(t.shiftMs)}</span>)</span></div>`;
           }).join('');
           const inListHtml = batch.inIds.map(inId => {
             const name = state.roster.find(r => r.id === inId)?.name || '--';
             const t = Engine.times(state, inId, now);
-            return `<div class="mb-1"><span class="font-black text-base">${name}</span> <span class="text-xs font-mono-nums">(Sat: <span data-t="recInSat" data-id="${inId}">${fmt(t.satMs)}</span>)</span></div>`;
+            return `<div class="mb-1"><span class="font-black text-base">${escHtml(name)}</span> <span class="text-xs font-mono-nums">(Sat: <span data-t="recInSat" data-id="${escHtml(inId)}">${fmt(t.satMs)}</span>)</span></div>`;
           }).join('');
           batchView.innerHTML = `
             <div class="text-xs font-black mb-2 text-blue-900">Recommended Line Sub (${batch.outIds.length} ⇄ ${batch.inIds.length})</div>
@@ -2882,6 +3325,10 @@
         }
       }
 
+      if (activeBadgeDrawerPid && (!state.match.players[activeBadgeDrawerPid] || state.match.players[activeBadgeDrawerPid].absent)) {
+        activeBadgeDrawerPid = null;
+      }
+
       // Lists
       let fieldHtml = '';
       let benchHtml = '';
@@ -2889,7 +3336,7 @@
 
       for (let r of state.roster) {
         let p = state.match.players[r.id];
-        if (!p) continue;
+        if (!p || p.absent) continue;
         let t = Engine.times(state, r.id, now);
 
         const isField = p.onField;
@@ -2900,26 +3347,28 @@
         if (!isField && manualInId === r.id) classes += " selected";
         if (!isField && (p.resting || p.fouledOut)) classes += " resting";
 
+        const safeId = escHtml(r.id);
+        const safeName = escHtml(r.name);
         const timeLabel = isField ? "Shift:" : "Sat:";
-        const timeSpan = `<span class="font-mono-nums font-black text-sm" data-t="liveMs" data-id="${r.id}">00:00</span>`;
-        const periodSpan = `<span class="font-mono-nums font-bold" data-t="periodMs" data-id="${r.id}">00:00</span>`;
-        const totalSpan = `<span class="font-mono-nums font-bold" data-t="totalMs" data-id="${r.id}">00:00</span>`;
-        const fBadge = `<span class="fairness-badge ${badgeClass(t.fairDeltaMs)}" data-t="fairMs" data-id="${r.id}">${fmtBadge(t.fairDeltaMs)}</span>`;
+        const timeSpan = `<span class="font-mono-nums font-black text-sm" data-t="liveMs" data-id="${safeId}">00:00</span>`;
+        const periodSpan = `<span class="font-mono-nums font-bold" data-t="periodMs" data-id="${safeId}">00:00</span>`;
+        const totalSpan = `<span class="font-mono-nums font-bold" data-t="totalMs" data-id="${safeId}">00:00</span>`;
+        const fBadge = `<span class="fairness-badge ${badgeClass(t.fairDeltaMs)}" data-t="fairMs" data-id="${safeId}">${fmtBadge(t.fairDeltaMs)}</span>`;
 
         let actionButtons = '';
         if (isField) {
           if (isBball) {
-            actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" data-points="1" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +1</button>`;
-            actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" data-points="2" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +2</button>`;
-            actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" data-points="3" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +3</button>`;
+            actionButtons += `<button data-action="scoreUsBtn" data-id="${safeId}" data-points="1" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +1</button>`;
+            actionButtons += `<button data-action="scoreUsBtn" data-id="${safeId}" data-points="2" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +2</button>`;
+            actionButtons += `<button data-action="scoreUsBtn" data-id="${safeId}" data-points="3" class="sun-btn bg-emerald-600" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">🏀 +3</button>`;
           } else {
-            actionButtons += `<button data-action="scoreUsBtn" data-id="${r.id}" data-points="1" class="sun-btn bg-emerald-600" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.25rem;">⚽ Goal</button>`;
+            actionButtons += `<button data-action="scoreUsBtn" data-id="${safeId}" data-points="1" class="sun-btn bg-emerald-600" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.25rem;">⚽ Goal</button>`;
           }
         }
         if (isBball) {
-          actionButtons += `<button data-action="toggleFoulOutBtn" data-id="${r.id}" class="sun-btn bg-rose-100 text-rose-900" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">${!isField && p.fouledOut ? 'UNFOUL' : '🚫 Foul Out'}</button>`;
+          actionButtons += `<button data-action="toggleFoulOutBtn" data-id="${safeId}" class="sun-btn bg-rose-100 text-rose-900" style="padding: 0 0.45rem; min-height: 28px; font-size:11px; margin-top:0.25rem; margin-right:0.2rem;">${!isField && p.fouledOut ? 'UNFOUL' : '🚫 Foul Out'}</button>`;
         }
-        actionButtons += `<button data-action="toggleBadgeDrawer" data-id="${r.id}" class="sun-btn" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem;">+ 🌟 Badge</button>`;
+        actionButtons += `<button data-action="toggleBadgeDrawer" data-id="${safeId}" class="sun-btn" style="padding: 0 0.5rem; min-height: 28px; font-size:11px; margin-top:0.25rem;">+ 🌟 Badge</button>`;
 
         const badgeCounts = {};
         Object.keys(Engine.BADGE_MAP).forEach(k => { badgeCounts[k] = 0; });
@@ -2932,19 +3381,19 @@
           .join(' ');
 
         const drawerButtons = Object.entries(sportCfg.badges)
-          .map(([bKey, bMeta]) => `<button class="badge-btn" data-action="awardBadge" data-id="${r.id}" data-badge="${bKey}" title="${bMeta.title}">${bMeta.icon}</button>`)
+          .map(([bKey, bMeta]) => `<button class="badge-btn" data-action="awardBadge" data-id="${safeId}" data-badge="${escHtml(bKey)}" title="${escHtml(bMeta.title)}">${bMeta.icon}</button>`)
           .join('');
         const drawerHtml = activeBadgeDrawerPid === r.id ? `
-           <div class="badge-strip" data-id="${r.id}">
+           <div class="badge-strip" data-id="${safeId}">
              ${drawerButtons}
            </div>
          ` : '';
 
         let html = `
-           <div class="${classes}" data-action="${isField ? 'tapField' : 'tapBench'}" data-id="${r.id}">
+           <div class="${classes}" data-action="${isField ? 'tapField' : 'tapBench'}" data-id="${safeId}">
              <div style="flex:1">
                <div class="flex items-center gap-2 mb-1">
-                 <span class="font-black text-lg">${r.name}</span>
+                 <span class="font-black text-lg">${safeName}</span>
                  ${!isField && p.resting ? '<span class="text-xs bg-slate-200 px-1 rounded font-bold">REST</span>' : ''}
                  ${p.fouledOut ? '<span class="text-xs bg-rose-100 text-rose-900 border border-rose-300 px-1 rounded font-bold">FOULED OUT</span>' : ''}
                </div>
@@ -2970,6 +3419,8 @@
       document.getElementById('benchCount').textContent = bCount;
       document.getElementById('benchList').innerHTML = benchHtml;
 
+      renderNotHere();
+
       // Manual swap bar
       if (manualOutId || manualInId) {
         document.getElementById('manualSwapBar').classList.remove('hidden');
@@ -2983,6 +3434,11 @@
 
       document.getElementById('scoreUs').textContent = state.match.score.us || 0;
       document.getElementById('scoreThem').textContent = state.match.score.them || 0;
+
+      const rosterModalEl = document.getElementById('rosterModal');
+      if (rosterModalEl && !rosterModalEl.classList.contains('hidden')) {
+        renderRosterModal();
+      }
 
       renderTimes();
     }
@@ -3069,6 +3525,147 @@
       const id = btn.getAttribute('data-id');
 
       if (action === 'toggleClock') toggleClock();
+      else if (action === 'openRoster') openRoster();
+      else if (action === 'closeRoster') closeRoster();
+      else if (action === 'toggleNotHere') {
+        isNotHereOpen = !isNotHereOpen;
+        renderNotHere();
+      }
+      else if (action === 'liveAddBench') handleLiveAdd(false);
+      else if (action === 'liveAddField') handleLiveAdd(true);
+      else if (action === 'quickArrivedBench' || action === 'rosterArrivedBench') {
+        clearRosterErrors();
+        dispatch('markPlayerArrived', id, { putOnField: false });
+      }
+      else if (action === 'quickArrivedField' || action === 'rosterArrivedField') {
+        clearRosterErrors();
+        dispatch('markPlayerArrived', id, { putOnField: true });
+      }
+      else if (action === 'enterFieldBtn') {
+        e.stopPropagation();
+        dispatch('enterField', id);
+      }
+      else if (action === 'rosterMarkAbsent') {
+        const r = state.roster.find(x => x.id === id);
+        const p = state.match.players[id];
+        if (!r || !p || p.absent) return;
+        clearRosterErrors();
+        if (!p.onField) {
+          dispatch('markPlayerAbsent', id, null);
+          return;
+        }
+        const now = Date.now();
+        const sportCfg = Engine.getSportConfig(state);
+        const activeMatch = Engine.hasMatchActivity(state);
+        const actionLabel = activeMatch ? 'Left Early' : 'Absent';
+        const replacementId = findRecommendedReplacementId(now);
+        if (replacementId) {
+          const inName = state.roster.find(x => x.id === replacementId)?.name || 'Bench Player';
+          showActionModal(
+            activeMatch ? `${r.name} Leaving Early?` : `Mark ${r.name} Absent?`,
+            `${r.name} is currently ${sportCfg.surfaceLabel.toLowerCase()}. Swap in ${inName} or leave the ${sportCfg.surfaceNoun.toLowerCase()} slot open?`,
+            [
+              { label: `Swap in ${inName} & Mark ${actionLabel}`, className: 'bg-blue-700', dataset: { action: 'confirmAbsentSwap', outId: id, inId: replacementId } },
+              { label: `Leave Slot Open & Mark ${actionLabel}`, className: 'bg-slate-200 text-slate-900', dataset: { action: 'confirmAbsentLeaveOpen', id } },
+              { label: 'Cancel', dataset: { action: 'closeModal' } }
+            ]
+          );
+        } else {
+          showActionModal(
+            activeMatch ? `${r.name} Leaving Early?` : `Mark ${r.name} Absent?`,
+            `${r.name} is currently ${sportCfg.surfaceLabel.toLowerCase()} and no eligible bench replacement is available. Mark ${actionLabel} and leave the ${sportCfg.surfaceNoun.toLowerCase()} slot open?`,
+            [
+              { label: 'Cancel', dataset: { action: 'closeModal' } },
+              { label: `Leave Slot Open & Mark ${actionLabel}`, className: 'bg-amber-400', dataset: { action: 'confirmAbsentLeaveOpen', id } }
+            ]
+          );
+        }
+      }
+      else if (action === 'confirmAbsentSwap') {
+        const outId = btn.getAttribute('data-out-id');
+        const inId = btn.getAttribute('data-in-id');
+        closeModal();
+        clearRosterErrors();
+        dispatch('markPlayerAbsent', outId, inId);
+      }
+      else if (action === 'confirmAbsentLeaveOpen') {
+        closeModal();
+        clearRosterErrors();
+        dispatch('markPlayerAbsent', id, null);
+      }
+      else if (action === 'rosterRemoveBtn') {
+        const r = state.roster.find(x => x.id === id);
+        const p = state.match.players[id];
+        if (!r || !p) return;
+        if (state.roster.length <= 1) {
+          showActionModal('Cannot Remove Player', 'Roster must have at least 1 player.', [
+            { label: 'OK', className: 'bg-slate-900', dataset: { action: 'closeModal' } }
+          ]);
+          return;
+        }
+        const now = Date.now();
+        if (Engine.playerHasMatchData(state, id, now)) {
+          if (p.absent) {
+            showActionModal(
+              'Match Stats Preserved',
+              `${r.name} already has recorded playtime or stats and is marked Left Early, so they stay on the roster to keep the Match Report intact.`,
+              [{ label: 'OK', className: 'bg-slate-900', dataset: { action: 'closeModal' } }]
+            );
+          } else {
+            const replacementId = p.onField ? findRecommendedReplacementId(now) : null;
+            if (p.onField && replacementId) {
+              const inName = state.roster.find(x => x.id === replacementId)?.name || 'Bench Player';
+              showActionModal(
+                `Keep ${r.name} in Match Report?`,
+                `${r.name} has recorded playtime or stats in this match. Mark them Left Early instead so the Match Report stays accurate.`,
+                [
+                  { label: `Swap in ${inName} & Mark Left Early`, className: 'bg-blue-700', dataset: { action: 'confirmAbsentSwap', outId: id, inId: replacementId } },
+                  { label: 'Leave Slot Open & Mark Left Early', className: 'bg-amber-400', dataset: { action: 'confirmAbsentLeaveOpen', id } },
+                  { label: 'Cancel', dataset: { action: 'closeModal' } }
+                ]
+              );
+            } else {
+              showActionModal(
+                `Keep ${r.name} in Match Report?`,
+                `${r.name} has recorded playtime or stats in this match. Removing them would erase their history. Mark them Left Early instead?`,
+                [
+                  { label: 'Cancel', dataset: { action: 'closeModal' } },
+                  { label: 'Mark Left Early', className: 'bg-amber-400', dataset: { action: 'confirmAbsentLeaveOpen', id } }
+                ]
+              );
+            }
+          }
+          return;
+        }
+        showActionModal(
+          `Remove ${r.name} from Team?`,
+          `${r.name} has no recorded stats in this match. Removing them deletes them from your saved team roster (Undo will be available right after).`,
+          [
+            { label: 'Cancel', dataset: { action: 'closeModal' } },
+            { label: 'Remove Player', className: 'bg-red-700', dataset: { action: 'confirmRemovePlayer', id } }
+          ]
+        );
+      }
+      else if (action === 'confirmRemovePlayer') {
+        closeModal();
+        const res = Engine.removePlayerFromRoster(state, id, Date.now());
+        if (res.ok) {
+          if (manualOutId === id) manualOutId = null;
+          if (manualInId === id) manualInId = null;
+          if (activeBadgeDrawerPid === id) activeBadgeDrawerPid = null;
+          clearRosterErrors();
+          state = res.state;
+          save();
+          manageWakeLock();
+          renderAll();
+        } else {
+          const errEl = document.getElementById('rosterErrors');
+          if (errEl) {
+            errEl.textContent = (res.errors || []).join(' • ');
+            errEl.classList.remove('hidden');
+          }
+        }
+      }
       else if (action === 'openSetup') openSetup();
       else if (action === 'closeSetup') closeSetup();
       else if (action === 'saveSetup') saveSetup();
@@ -3137,11 +3734,11 @@
           if (rec.inId) {
             const rName = state.roster.find(r => r.id === id)?.name || 'Player';
             const inName = state.roster.find(r => r.id === rec.inId)?.name || 'Bench Player';
-            showModal(`${rName} Fouled Out`, `Sub in ${inName} now?`, `
-              <button class="sun-btn bg-blue-700 text-white" data-action="confirmFoulOutSub" data-out-id="${id}" data-in-id="${rec.inId}">Swap & Mark Fouled Out</button>
-              <button class="sun-btn bg-slate-200 text-slate-900" data-action="confirmFoulOutOnly" data-id="${id}">Mark Fouled Out Only</button>
-              <button class="sun-btn" data-action="closeModal">Cancel</button>
-            `);
+            showActionModal(`${rName} Fouled Out`, `Sub in ${inName} now?`, [
+              { label: 'Swap & Mark Fouled Out', className: 'bg-blue-700', dataset: { action: 'confirmFoulOutSub', outId: id, inId: rec.inId } },
+              { label: 'Mark Fouled Out Only', className: 'bg-slate-200 text-slate-900', dataset: { action: 'confirmFoulOutOnly', id } },
+              { label: 'Cancel', dataset: { action: 'closeModal' } }
+            ]);
           } else {
             dispatch('toggleFoulOut', id);
           }
@@ -3245,23 +3842,41 @@
       }
     });
 
-    // Inject Rest buttons onto bench cards
+    document.getElementById('livePlayerName').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleLiveAdd(false);
+      }
+    });
+
+    // Inject Rest and open-slot Enter Field/Court buttons onto bench cards
     const origRenderAll = renderAll;
     renderAll = function () {
       origRenderAll();
+      const sportCfg = Engine.getSportConfig(state);
+      const hasOpenSlot = Engine._countOnField(state) < state.settings.fieldSize;
       const benchCards = document.getElementById('benchList').querySelectorAll('.player-card');
       benchCards.forEach(card => {
         const id = card.getAttribute('data-id');
         const p = state.match.players[id];
-        const restBtn = document.createElement('button');
-        restBtn.className = "sun-btn bg-slate-200 mt-2";
-        restBtn.style.padding = "0.25rem 0.5rem";
-        restBtn.style.minHeight = "28px";
-        restBtn.style.fontSize = "10px";
-        restBtn.dataset.action = "toggleRestBtn";
-        restBtn.dataset.id = id;
-        restBtn.textContent = p.resting ? "UNREST" : "REST";
-        card.querySelector('div').appendChild(restBtn);
+        if (!p || p.absent) return;
+        const container = card.querySelector('div');
+        const restBtn = createEl('button', {
+          className: 'sun-btn bg-slate-200 mt-2',
+          style: { padding: '0.25rem 0.5rem', minHeight: '28px', fontSize: '10px' },
+          dataset: { action: 'toggleRestBtn', id },
+          textContent: p.resting ? 'UNREST' : 'REST'
+        });
+        container.appendChild(restBtn);
+        if (hasOpenSlot && !p.resting && !p.fouledOut) {
+          const enterBtn = createEl('button', {
+            className: 'sun-btn bg-blue-700 mt-2',
+            style: { padding: '0.25rem 0.6rem', minHeight: '28px', fontSize: '10px', marginLeft: '0.25rem' },
+            dataset: { action: 'enterFieldBtn', id },
+            textContent: `+ ${sportCfg.surfaceNoun}`
+          });
+          container.appendChild(enterBtn);
+        }
       });
     };
 
