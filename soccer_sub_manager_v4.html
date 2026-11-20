@@ -1439,7 +1439,7 @@
 
         const outP = newState.match.players[outId];
         const inP = newState.match.players[inId];
-        if (!outP || !inP || !outP.onField || inP.onField) return state; // Invalid
+        if (!outP || !inP || !outP.onField || inP.onField || inP.absent) return state; // Invalid
 
         const cMs = this.clockMs(newState, now);
         newState.match.undo = {
@@ -1480,7 +1480,7 @@
         for (let i = 0; i < outIds.length; i++) {
           const outP = newState.match.players[outIds[i]];
           const inP = newState.match.players[inIds[i]];
-          if (!outP || !inP || !outP.onField || inP.onField) return state;
+          if (!outP || !inP || !outP.onField || inP.onField || inP.absent) return state;
         }
 
         const cMs = this.clockMs(newState, now);
@@ -1572,7 +1572,7 @@
 
         const outP = newState.match.players[outId];
         const inP = newState.match.players[inId];
-        if (!outP || !inP || !outP.onField || inP.onField) return state;
+        if (!outP || !inP || !outP.onField || inP.onField || inP.absent) return state;
 
         const cMs = this.clockMs(newState, now);
         const outName = state.roster.find(r => r.id === outId)?.name || 'Out';
@@ -1658,6 +1658,8 @@
         newState.match.undo = {
           label: `Reset Match`,
           keepClock: false,
+          roster: JSON.parse(JSON.stringify(state.roster)),
+          starterIds: JSON.parse(JSON.stringify(state.starterIds || [])),
           match: JSON.parse(JSON.stringify(state.match))
         };
         newState.match.period = 1;
@@ -1820,7 +1822,7 @@
         const cMs = this.clockMs(state, now);
         const mMs = this.matchElapsedMs(state, now);
         const onFieldCount = this._countOnField(state);
-        const putOnField = Boolean(opts && opts.putOnField) && onFieldCount < state.settings.fieldSize;
+        const putOnField = !p.fouledOut && Boolean(opts && opts.putOnField) && onFieldCount < state.settings.fieldSize;
         const sportCfg = this.getSportConfig(state);
 
         newState.match.undo = {
@@ -1965,8 +1967,9 @@
       },
       applySetup: function (state, draft, now) {
         let errors = [];
-        if (draft.fieldSize < 2 || draft.fieldSize > 11) errors.push("Field size must be 2-11");
-        if (draft.periodMinutes < 1 || draft.periodMinutes > 45) errors.push("Period minutes must be 1-45");
+        const fieldSizeInvalid = !Number.isInteger(draft.fieldSize) || draft.fieldSize < 2 || draft.fieldSize > 11;
+        if (fieldSizeInvalid) errors.push("Field size must be 2-11");
+        if (!Number.isInteger(draft.periodMinutes) || draft.periodMinutes < 1 || draft.periodMinutes > 45) errors.push("Period minutes must be 1-45");
         if (draft.periodCount !== 2 && draft.periodCount !== 4) errors.push("Period count must be 2 or 4");
         if (draft.roster.length < 1 || draft.roster.length > 18) errors.push("Roster must have 1-18 players");
         let names = new Set();
@@ -1981,7 +1984,7 @@
         const absentSet = new Set(Array.isArray(draft.absentIds) ? draft.absentIds : []);
         const uniqueStarters = [...new Set(Array.isArray(draft.starterIds) ? draft.starterIds : [])];
 
-        if (!matchActive) {
+        if (!matchActive && !fieldSizeInvalid) {
           const presentRoster = cleanRoster.filter(r => !absentSet.has(r.id));
           const reqStarters = Math.min(draft.fieldSize, presentRoster.length);
           const validStarters = uniqueStarters.filter(id => presentRoster.some(r => r.id === id));
@@ -2436,6 +2439,7 @@
       manualOutId = null;
       manualInId = null;
       activeBadgeDrawerPid = null;
+      isNotHereOpen = false;
       save();
       localStorage.setItem('CGM_ACTIVE_SPORT', validTarget);
       load(validTarget);
@@ -2711,8 +2715,10 @@
     }
 
     function saveSetup() {
-      draft.settings.fieldSize = parseInt(document.getElementById('draftFieldSize').value, 10);
-      draft.settings.periodMinutes = parseInt(document.getElementById('draftMinutes').value, 10);
+      const parsedFieldSize = parseInt(document.getElementById('draftFieldSize').value, 10);
+      const parsedPeriodMinutes = parseInt(document.getElementById('draftMinutes').value, 10);
+      draft.settings.fieldSize = Number.isInteger(parsedFieldSize) ? parsedFieldSize : 0;
+      draft.settings.periodMinutes = Number.isInteger(parsedPeriodMinutes) ? parsedPeriodMinutes : 0;
       draft.settings.periodCount = state.settings.periodCount || 4; // keeping existing
 
       const draftObj = {
@@ -2856,7 +2862,7 @@
             dataset: { action: 'rosterArrivedBench', id: r.id },
             textContent: '✓ Arrived'
           }),
-          hasOpenSlot ? createEl('button', {
+          hasOpenSlot && !p.fouledOut ? createEl('button', {
             className: 'sun-btn bg-blue-700',
             style: { minHeight: '36px', padding: '0 0.65rem', fontSize: '12px', whiteSpace: 'nowrap' },
             dataset: { action: 'rosterArrivedField', id: r.id },
@@ -2944,7 +2950,7 @@
               dataset: { action: 'quickArrivedBench', id: r.id },
               textContent: '✓ Arrived'
             }),
-            hasOpenSlot ? createEl('button', {
+            hasOpenSlot && !(p && p.fouledOut) ? createEl('button', {
               className: 'sun-btn bg-blue-700',
               style: { minHeight: '36px', padding: '0 0.65rem', fontSize: '12px', whiteSpace: 'nowrap' },
               dataset: { action: 'quickArrivedField', id: r.id },

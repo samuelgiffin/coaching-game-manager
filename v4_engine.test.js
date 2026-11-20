@@ -998,3 +998,127 @@ test('Match Report Prorated Targets & Absentee Handling', async (t) => {
     assert.strictEqual(mb1.targetMs, 450000);
   });
 });
+
+test('Final Review Hardening Guards', async (t) => {
+  await t.test('applySetup rejects NaN / 0 / non-integer fieldSize and periodMinutes without NaN starter message', () => {
+    const s = Engine.createState('soccer');
+    const baseRoster = [
+      { id: 'p1', name: 'A' },
+      { id: 'p2', name: 'B' },
+      { id: 'p3', name: 'C' }
+    ];
+
+    for (const badFieldSize of [NaN, 0, 1, 2.5, 12]) {
+      for (const badMinutes of [NaN, 0, -5, 4.5, 46]) {
+        const res = Engine.applySetup(s, {
+          sport: 'soccer',
+          fieldSize: badFieldSize,
+          periodMinutes: badMinutes,
+          periodCount: 4,
+          roster: baseRoster,
+          starterIds: ['p1', 'p2']
+        }, 0);
+        assert.strictEqual(res.ok, false);
+        assert.ok(res.errors.includes('Field size must be 2-11'), `Expected fieldSize error for ${badFieldSize}`);
+        assert.ok(res.errors.includes('Period minutes must be 1-45'), `Expected periodMinutes error for ${badMinutes}`);
+        assert.ok(
+          !res.errors.some(e => e.includes('NaN')),
+          `Unexpected NaN error message: ${JSON.stringify(res.errors)}`
+        );
+        assert.ok(
+          !res.errors.some(e => e.startsWith('Must select exactly')),
+          `Starter count check should be skipped when fieldSize is invalid: ${JSON.stringify(res.errors)}`
+        );
+      }
+    }
+  });
+
+  await t.test('markPlayerArrived keeps fouled-out player on bench even with open court slot and putOnField true', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 3, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'b1', name: 'FouledKid' },
+      { id: 'b2', name: 'Active1' },
+      { id: 'b3', name: 'Active2' }
+    ];
+    s.starterIds = ['b1', 'b2', 'b3'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+    s = Engine.toggleFoulOut(s, 'b1', 60000);
+    assert.strictEqual(s.match.players.b1.fouledOut, true);
+    assert.strictEqual(s.match.players.b1.onField, false);
+
+    // Mark fouled-out player absent (left early), leaving an open slot (2 on court < fieldSize 3)
+    s = Engine.markPlayerAbsent(s, 'b1', null, 120000);
+    assert.strictEqual(s.match.players.b1.absent, true);
+    assert.strictEqual(Engine._countOnField(s), 2);
+
+    // Player returns with putOnField: true -> must stay on bench with fouledOut: true
+    s = Engine.markPlayerArrived(s, 'b1', { putOnField: true }, 180000);
+    assert.strictEqual(s.match.players.b1.absent, false);
+    assert.strictEqual(s.match.players.b1.onField, false);
+    assert.strictEqual(s.match.players.b1.fouledOut, true);
+  });
+
+  await t.test('resetMatch undo restores roster and starterIds after a pre-kickoff Setup edit', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'p1', name: 'Orig1' },
+      { id: 'p2', name: 'Orig2' },
+      { id: 'p3', name: 'Orig3' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+    s = Engine.recordScore(s, 'us', 'p1', 1, 30000);
+
+    s = Engine.resetMatch(s, 60000);
+    assert.ok(Array.isArray(s.match.undo.roster));
+    assert.ok(Array.isArray(s.match.undo.starterIds));
+
+    const setupRes = Engine.applySetup(s, {
+      sport: 'soccer',
+      fieldSize: 2,
+      periodMinutes: 8,
+      periodCount: 4,
+      roster: [
+        { id: 'p1', name: 'Orig1' },
+        { id: 'p4', name: 'NewKid' }
+      ],
+      starterIds: ['p1', 'p4']
+    }, 65000);
+    assert.strictEqual(setupRes.ok, true);
+    assert.strictEqual(setupRes.state.match.undo.label, 'Reset Match');
+
+    const undone = Engine.undo(setupRes.state, 70000);
+    assert.deepStrictEqual(undone.roster.map(r => r.id), ['p1', 'p2', 'p3']);
+    assert.deepStrictEqual(undone.starterIds, ['p1', 'p2']);
+    assert.strictEqual(undone.match.score.us, 1);
+    assert.ok(undone.match.players.p2 && undone.match.players.p3);
+  });
+
+  await t.test('substitute, substituteBatch, and foulOutAndSub reject absent incoming players', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'p1', name: 'On1' },
+      { id: 'p2', name: 'On2' },
+      { id: 'p3', name: 'AbsentKid' },
+      { id: 'p4', name: 'BenchKid' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.markPlayerAbsent(s, 'p3', null, 0);
+    s = Engine.start(s, 0);
+
+    const subRes = Engine.substitute(s, 'p1', 'p3', 60000);
+    assert.strictEqual(subRes, s);
+
+    const batchRes = Engine.substituteBatch(s, ['p1', 'p2'], ['p3', 'p4'], 60000);
+    assert.strictEqual(batchRes, s);
+
+    const foulRes = Engine.foulOutAndSub(s, 'p1', 'p3', 60000);
+    assert.strictEqual(foulRes, s);
+  });
+});
