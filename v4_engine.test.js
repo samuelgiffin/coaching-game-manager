@@ -330,6 +330,7 @@ test('Engine Basketball Line Swap, Mid-Quarter Alert & Foul-Out', async (t) => {
     ];
     state.starterIds = ['p1', 'p2'];
     state = Engine.resetMatch(state, 0);
+    state = Engine.start(state, 0);
 
     // Q1 scoring
     state = Engine.recordScore(state, 'us', 'p1', 3, 60000);
@@ -338,6 +339,8 @@ test('Engine Basketball Line Swap, Mid-Quarter Alert & Foul-Out', async (t) => {
 
     // Advance to Q4 and score comeback points
     state.match.period = 4;
+    state.match.clock.elapsedMs = 0;
+    state.match.clock.startedAt = 0;
     state = Engine.recordScore(state, 'us', 'p2', 2, 60000);
     state = Engine.recordScore(state, 'us', 'p1', 3, 120000);
 
@@ -357,8 +360,34 @@ test('Engine Basketball Line Swap, Mid-Quarter Alert & Foul-Out', async (t) => {
     // Team and player shot mix
     assert.deepStrictEqual(metrics.teamShotMix, { pt1: 1, pt2: 1, pt3: 2 });
     const steph = metrics.players.find(p => p.id === 'p1');
+    const klay = metrics.players.find(p => p.id === 'p2');
+    const draymond = metrics.players.find(p => p.id === 'p3');
     assert.strictEqual(steph.pointsScored, 7);
     assert.deepStrictEqual(steph.shotMix, { pt1: 1, pt2: 0, pt3: 2 });
+    assert.deepStrictEqual(steph.pointsByPeriod, [4, 0, 0, 3]);
+    assert.deepStrictEqual(klay.pointsByPeriod, [0, 0, 0, 2]);
+    assert.deepStrictEqual(draymond.pointsByPeriod, [0, 0, 0, 0]);
+
+    // Chronological playByPlay with running scores
+    assert.ok(Array.isArray(metrics.playByPlay));
+    assert.strictEqual(metrics.playByPlay.length, 5);
+    assert.deepStrictEqual(
+      metrics.playByPlay.map(e => ({
+        period: e.period,
+        clockMs: e.clockMs,
+        points: e.points,
+        playerName: e.playerName,
+        runningUs: e.runningUs,
+        runningThem: e.runningThem
+      })),
+      [
+        { period: 1, clockMs: 60000, points: 3, playerName: 'Steph', runningUs: 3, runningThem: 0 },
+        { period: 1, clockMs: 90000, points: 1, playerName: 'Steph', runningUs: 4, runningThem: 0 },
+        { period: 1, clockMs: 120000, points: 2, playerName: 'Opponent', runningUs: 4, runningThem: 2 },
+        { period: 4, clockMs: 60000, points: 2, playerName: 'Klay', runningUs: 6, runningThem: 2 },
+        { period: 4, clockMs: 120000, points: 3, playerName: 'Steph', runningUs: 9, runningThem: 2 }
+      ]
+    );
 
     // Headline & Impact awards
     assert.ok(typeof metrics.headline === 'string' && metrics.headline.length > 10);

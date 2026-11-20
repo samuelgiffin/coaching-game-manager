@@ -255,13 +255,32 @@ const assert = require('node:assert');
     await page.click('button[data-action="openMatchLog"]');
     await page.waitForFunction(() => !document.getElementById('matchLogModal').classList.contains('hidden'));
 
+    // Verify Player Box Score table shows all 7 players, quarter columns, shot mix, and fits cleanly in 390px width
+    const topScorersText = await page.innerText('#logTopScorers');
+    for (const pName of bballNames) {
+      assert.ok(topScorersText.includes(pName), `Player Box Score should include ${pName}, got "${topScorersText}"`);
+    }
+    assert.ok(topScorersText.includes('Q1') && topScorersText.includes('Q4') && topScorersText.includes('PTS'), `Player Box Score should show Q1..Q4 and PTS columns, got "${topScorersText}"`);
+    assert.ok(topScorersText.includes('5 PTS'), `Player Box Score should show 5 PTS, got "${topScorersText}"`);
+    assert.ok(topScorersText.includes('1×3PT') && topScorersText.includes('1×2PT'), `Player Box Score should show shot mix breakdown (1×3PT, 1×2PT), got "${topScorersText}"`);
+
+    const boxScoreOverflow = await page.evaluate(() => {
+      const wrap = document.querySelector('#logTopScorers > div');
+      return wrap ? wrap.scrollWidth > wrap.clientWidth : false;
+    });
+    assert.strictEqual(boxScoreOverflow, false, 'Player Box Score table should fit without horizontal overflow on 390px viewport');
+
+    // Verify Play-by-Play drawer starts collapsed by default for clean screenshots
+    const pbpInitiallyVisible = await page.isVisible('#logTimeline');
+    assert.strictEqual(pbpInitiallyVisible, false, 'Scoring Play-by-Play drawer should start collapsed by default');
+
+    // Expand Play-by-Play drawer and verify Q1 events and running score
+    await page.click('button[data-action="togglePlayByPlay"]');
+    await page.waitForFunction(() => !document.getElementById('logTimeline').classList.contains('hidden'));
     const timelineText = await page.innerText('#logTimeline');
     assert.ok(timelineText.includes('Q1') && timelineText.includes('🏀 +3') && timelineText.includes('🏀 +2'), `Timeline should show Q1 and +3/+2 points, got "${timelineText}"`);
     assert.ok(timelineText.includes('Them 🏀 +2'), `Timeline should show Them 🏀 +2, got "${timelineText}"`);
-
-    const topScorersText = await page.innerText('#logTopScorers');
-    assert.ok(topScorersText.includes('5 PTS') || topScorersText.includes('5 pts'), `Top scorers should show 5 PTS, got "${topScorersText}"`);
-    assert.ok(topScorersText.includes('1×3PT') && topScorersText.includes('1×2PT'), `Top scorers should show shot mix breakdown (1×3PT, 1×2PT), got "${topScorersText}"`);
+    assert.ok(timelineText.includes('5 - 2'), `Timeline should show running score 5 - 2, got "${timelineText}"`);
 
     const boxScoreText = await page.innerText('#logBoxScore');
     assert.ok(boxScoreText.includes('Q1') && boxScoreText.includes('5') && boxScoreText.includes('2'), `Box score should display quarter-by-quarter points, got "${boxScoreText}"`);
