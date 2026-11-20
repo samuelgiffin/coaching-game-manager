@@ -847,7 +847,6 @@
 
     <div class="flex gap-2 mt-4 pt-4 border-t-2">
       <button id="advancePeriodConfirmBtn" data-action="advancePeriodConfirm" class="sun-btn w-full">Next Period →</button>
-      <button data-action="resetMatchConfirm" class="sun-btn">Reset</button>
     </div>
   </main>
 
@@ -879,6 +878,15 @@
       </div>
 
       <div id="setupErrors" class="hidden text-sm font-bold mb-4" style="color:#b91c1c;"></div>
+
+      <div id="setupLiveNotice" class="sun-card bg-amber-bg hidden mb-4">
+        <div class="text-xs font-bold mb-2">
+          Match in progress — field size, period minutes, and starters are locked so your game can't be reset. Use Roster &amp; Attendance for late arrivals or absences.
+        </div>
+        <button data-action="openRosterFromSetup" class="sun-btn bg-slate-900 w-full" style="min-height:40px;">
+          👥 Open Roster &amp; Attendance
+        </button>
+      </div>
 
       <div class="flex gap-2 mb-4" id="sportSelector">
         <button data-action="selectSport" data-sport="soccer" class="sun-btn bg-slate-900 w-full">⚽ Soccer</button>
@@ -915,6 +923,16 @@
       <div class="mt-4 flex gap-2">
         <button data-action="saveSetup" class="sun-btn bg-emerald-600 w-full">Save</button>
         <button data-action="downloadHtml" class="sun-btn" aria-label="Download App HTML">💾</button>
+      </div>
+
+      <div id="setupDangerZone" class="danger-zone">
+        <div class="text-xs font-black uppercase mb-1" style="color:#b91c1c;">Danger Zone</div>
+        <div class="text-xs font-bold text-slate-700 mb-2">
+          Resets clock, period, score, and playtimes to zero. Your saved team roster is kept.
+        </div>
+        <button data-action="resetMatchConfirm" class="sun-btn bg-red-700 w-full" style="min-height:42px;">
+          Reset Match
+        </button>
       </div>
     </div>
   </div>
@@ -2310,6 +2328,7 @@
       for (const [k, v] of Object.entries(props)) {
         if (k === 'className') node.className = v;
         else if (k === 'textContent') node.textContent = v;
+        else if (k === 'disabled') node.disabled = Boolean(v);
         else if (k === 'style' && typeof v === 'object') Object.assign(node.style, v);
         else if (k === 'dataset' && typeof v === 'object') {
           for (const [dk, dv] of Object.entries(v)) {
@@ -2400,16 +2419,49 @@
       }
     }
 
-    function switchSport(targetSport) {
+    function initSetupDraft() {
+      draft = JSON.parse(JSON.stringify(state));
+      draft.starterIds = draft.starterIds || [];
+      draft.absentIds = state.roster.filter(r => state.match.players[r.id]?.absent).map(r => r.id);
+      const input = document.getElementById('draftPlayerName');
+      if (input) input.value = '';
+    }
+
+    function executeSwitchSport(targetSport) {
       const validTarget = targetSport === 'basketball' ? 'basketball' : 'soccer';
+      if (state.match && state.match.clock && state.match.clock.running) {
+        state = Engine.pause(state, Date.now());
+        manageWakeLock();
+      }
+      manualOutId = null;
+      manualInId = null;
+      activeBadgeDrawerPid = null;
       save();
       localStorage.setItem('CGM_ACTIVE_SPORT', validTarget);
       load(validTarget);
       state.sport = validTarget;
-      draft = JSON.parse(JSON.stringify(state));
-      draft.starterIds = draft.starterIds || [];
+      initSetupDraft();
       renderSetup();
       renderAll();
+    }
+
+    function switchSport(targetSport) {
+      const validTarget = targetSport === 'basketball' ? 'basketball' : 'soccer';
+      if (validTarget === state.sport) return;
+      if (Engine.hasMatchActivity(state) && !Engine.isMatchComplete(state, Date.now())) {
+        const currentCfg = Engine.getSportConfig(state);
+        const targetCfg = Engine.getSportConfig(validTarget);
+        showActionModal(
+          `Switch to ${targetCfg.icon} ${targetCfg.name}?`,
+          `Your live ${currentCfg.name} match will be paused and saved safely so you can switch back anytime.`,
+          [
+            { label: 'Cancel', dataset: { action: 'closeModal' } },
+            { label: 'Pause & Switch', className: 'bg-slate-900', dataset: { action: 'confirmSwitchSport', sport: validTarget } }
+          ]
+        );
+        return;
+      }
+      executeSwitchSport(validTarget);
     }
 
     async function manageWakeLock() {
@@ -2487,16 +2539,20 @@
     }
 
     function resetMatchConfirm() {
-      showModal("Reset Match?", "This resets the clock and play times to zero. Rosters are kept.", `
-          <button class="sun-btn" data-action="closeModal">Cancel</button>
-          <button class="sun-btn bg-red-700 text-white" data-action="resetMatch">Reset Match</button>
-      `);
+      const sportCfg = Engine.getSportConfig(state);
+      const cMs = Engine.clockMs(state, Date.now());
+      const msg = Engine.hasMatchActivity(state)
+        ? `${sportCfg.periodLabel} ${state.match.period} • ${fmt(cMs)} • Score ${state.match.score.us}–${state.match.score.them} will be cleared. Your team roster is kept and Undo will be available right after.`
+        : 'This resets the clock and play times to zero. Your team roster is kept.';
+      showActionModal('Reset Match?', msg, [
+        { label: 'Cancel', dataset: { action: 'closeModal' } },
+        { label: 'Reset Match', className: 'bg-red-700', dataset: { action: 'resetMatch' } }
+      ]);
     }
 
     // Setup Draft
     function openSetup() {
-      draft = JSON.parse(JSON.stringify(state));
-      draft.starterIds = draft.starterIds || [];
+      initSetupDraft();
       renderSetup();
       document.getElementById('setupModal').classList.remove('hidden');
     }
@@ -2506,10 +2562,29 @@
       document.getElementById('setupModal').classList.add('hidden');
     }
 
+    function handleDraftAddPlayer() {
+      const input = document.getElementById('draftPlayerName');
+      const name = input ? input.value.trim() : '';
+      if (name && draft) {
+        draft.roster.push({ id: Engine.generateId(), name });
+        input.value = '';
+        renderSetup();
+      }
+    }
+
     function renderSetup() {
-      document.getElementById('setupErrors').classList.add('hidden');
+      const errDiv = document.getElementById('setupErrors');
+      errDiv.classList.add('hidden');
+      errDiv.replaceChildren();
+
       const sportCfg = Engine.getSportConfig(draft || state);
-      const matchStarted = state.match.period > 1 || state.match.clock.elapsedMs > 0 || state.match.clock.running;
+      const matchActive = Engine.hasMatchActivity(state);
+
+      const liveNotice = document.getElementById('setupLiveNotice');
+      if (liveNotice) liveNotice.classList.toggle('hidden', !matchActive);
+
+      const dangerZone = document.getElementById('setupDangerZone');
+      if (dangerZone) dangerZone.classList.toggle('hidden', state.roster.length === 0);
 
       const sizeLabelEl = document.getElementById('setupSizeLabel');
       if (sizeLabelEl) sizeLabelEl.textContent = sportCfg.sizeLabel;
@@ -2521,35 +2596,118 @@
           : "sun-btn bg-slate-100 text-slate-700 w-full";
       });
 
-      document.getElementById('draftFieldSize').value = draft.settings.fieldSize;
-      document.getElementById('draftMinutes').value = draft.settings.periodMinutes;
+      const fieldSizeEl = document.getElementById('draftFieldSize');
+      const minutesEl = document.getElementById('draftMinutes');
+      fieldSizeEl.value = draft.settings.fieldSize;
+      minutesEl.value = draft.settings.periodMinutes;
+      fieldSizeEl.disabled = matchActive;
+      minutesEl.disabled = matchActive;
 
-      document.getElementById('draftFieldSize').disabled = matchStarted;
-      document.getElementById('draftMinutes').disabled = matchStarted;
+      const absentSet = new Set(draft.absentIds || []);
+      const presentCount = draft.roster.filter(r => !absentSet.has(r.id)).length;
+      const reqStarters = Math.max(0, Math.min(draft.settings.fieldSize, presentCount));
+      const activeStartersCount = (draft.starterIds || []).filter(
+        id => !absentSet.has(id) && draft.roster.some(r => r.id === id)
+      ).length;
 
-      const reqStarters = Math.min(draft.settings.fieldSize, draft.roster.length);
       document.getElementById('draftRosterCount').textContent = draft.roster.length;
-      document.getElementById('draftStarterCount').textContent = draft.starterIds.length;
+      document.getElementById('draftStarterCount').textContent = activeStartersCount;
       document.getElementById('draftTargetStarters').textContent = reqStarters;
 
       const list = document.getElementById('draftRosterList');
-      list.innerHTML = draft.roster.map(r => {
-        const isStarter = draft.starterIds.includes(r.id);
-        const btnClass = isStarter ? "bg-emerald-600" : "bg-slate-200 text-slate-900";
-        return `
-          <div class="player-card">
-             <span class="font-black text-lg">${escHtml(r.name)}</span>
-             <button data-action="draftToggleStarter" data-id="${escHtml(r.id)}" class="sun-btn ${btnClass}" style="min-height:36px; font-size:12px;">
-               ${isStarter ? 'Starter' : 'Bench'}
-             </button>
-          </div>
-        `;
-      }).join('');
+      if (matchActive) {
+        list.replaceChildren(...draft.roster.map(r => {
+          const p = state.match.players[r.id];
+          let statusLabel = 'Bench';
+          let statusStyle = { background: '#f1f5f9', color: '#475569' };
+          if (p && p.absent) {
+            statusLabel = 'Absent';
+            statusStyle = { background: '#fef3c7', color: '#92400e' };
+          } else if (p && p.onField) {
+            statusLabel = sportCfg.surfaceLabel;
+            statusStyle = { background: '#dcfce7', color: '#166534' };
+          } else if (p && p.fouledOut) {
+            statusLabel = 'Fouled Out';
+            statusStyle = { background: '#ffe4e6', color: '#881337' };
+          }
+          return createEl('div', {
+            className: 'player-card',
+            style: { cursor: 'default', gap: '0.5rem' }
+          }, [
+            createEl('span', {
+              className: 'font-black text-base truncate',
+              style: { flex: '1', minWidth: '0' },
+              textContent: r.name
+            }),
+            createEl('span', {
+              className: 'text-xs font-bold px-2 py-0-5 rounded-md',
+              style: { ...statusStyle, flexShrink: '0' },
+              textContent: statusLabel
+            })
+          ]);
+        }));
+        return;
+      }
+
+      list.replaceChildren(...draft.roster.map(r => {
+        const isAbsent = absentSet.has(r.id);
+        const isStarter = !isAbsent && draft.starterIds.includes(r.id);
+        const starterBtnClass = isAbsent
+          ? 'sun-btn bg-slate-200 text-slate-400'
+          : (isStarter ? 'sun-btn bg-emerald-600' : 'sun-btn bg-slate-200 text-slate-900');
+        const absentBtnClass = isAbsent
+          ? 'sun-btn bg-amber-400'
+          : 'sun-btn bg-slate-200 text-slate-900';
+
+        return createEl('div', {
+          className: 'player-card',
+          style: { cursor: 'default', gap: '0.5rem', ...(isAbsent ? { background: '#f8fafc' } : {}) }
+        }, [
+          createEl('span', {
+            className: `font-black text-base truncate${isAbsent ? ' text-slate-500' : ''}`,
+            style: { flex: '1', minWidth: '0' },
+            textContent: r.name
+          }),
+          createEl('div', {
+            className: 'flex items-center gap-2',
+            style: { flexShrink: '0' }
+          }, [
+            createEl('button', {
+              className: starterBtnClass,
+              style: {
+                minHeight: '36px',
+                fontSize: '12px',
+                padding: '0 0.55rem',
+                ...(isAbsent ? { opacity: '0.5', cursor: 'not-allowed' } : {})
+              },
+              dataset: { action: 'draftToggleStarter', id: r.id },
+              disabled: isAbsent,
+              'aria-label': isStarter ? `Set ${r.name} to Bench` : `Set ${r.name} as Starter`,
+              textContent: isStarter ? 'Starter' : 'Bench'
+            }),
+            createEl('button', {
+              className: absentBtnClass,
+              style: { minHeight: '36px', fontSize: '12px', padding: '0 0.55rem' },
+              dataset: { action: 'draftToggleAbsent', id: r.id },
+              'aria-label': isAbsent ? `Mark ${r.name} Present` : `Mark ${r.name} Absent`,
+              textContent: isAbsent ? 'Absent' : 'Present'
+            }),
+            createEl('button', {
+              className: 'sun-btn bg-rose-100 text-rose-900',
+              style: { minHeight: '36px', minWidth: '36px', padding: '0 0.45rem', fontSize: '14px' },
+              dataset: { action: 'draftRemovePlayer', id: r.id },
+              'aria-label': `Remove ${r.name}`,
+              title: 'Remove Player',
+              textContent: '🗑'
+            })
+          ])
+        ]);
+      }));
     }
 
     function saveSetup() {
-      draft.settings.fieldSize = parseInt(document.getElementById('draftFieldSize').value);
-      draft.settings.periodMinutes = parseInt(document.getElementById('draftMinutes').value);
+      draft.settings.fieldSize = parseInt(document.getElementById('draftFieldSize').value, 10);
+      draft.settings.periodMinutes = parseInt(document.getElementById('draftMinutes').value, 10);
       draft.settings.periodCount = state.settings.periodCount || 4; // keeping existing
 
       const draftObj = {
@@ -2558,7 +2716,8 @@
         periodMinutes: draft.settings.periodMinutes,
         periodCount: draft.settings.periodCount,
         roster: draft.roster,
-        starterIds: draft.starterIds
+        starterIds: draft.starterIds,
+        absentIds: draft.absentIds || []
       };
       const result = Engine.applySetup(state, draftObj, Date.now());
       if (result.ok) {
@@ -2568,7 +2727,7 @@
         closeSetup();
       } else {
         const errDiv = document.getElementById('setupErrors');
-        errDiv.innerHTML = result.errors.map(escHtml).join('<br>');
+        errDiv.replaceChildren(...result.errors.map(err => createEl('div', { textContent: err })));
         errDiv.classList.remove('hidden');
       }
     }
@@ -3668,10 +3827,19 @@
       }
       else if (action === 'openSetup') openSetup();
       else if (action === 'closeSetup') closeSetup();
+      else if (action === 'openRosterFromSetup') {
+        closeSetup();
+        openRoster();
+      }
       else if (action === 'saveSetup') saveSetup();
       else if (action === 'selectSport') {
         const targetSport = btn.getAttribute('data-sport');
         switchSport(targetSport);
+      }
+      else if (action === 'confirmSwitchSport') {
+        const targetSport = btn.getAttribute('data-sport');
+        closeModal();
+        executeSwitchSport(targetSport);
       }
       else if (action === 'toggleBadgeDrawer') {
         activeBadgeDrawerPid = activeBadgeDrawerPid === id ? null : id;
@@ -3711,7 +3879,12 @@
       else if (action === 'advancePeriodConfirm') advancePeriodConfirm();
       else if (action === 'advancePeriod') { closeModal(); dispatch('advancePeriod'); }
       else if (action === 'resetMatchConfirm') resetMatchConfirm();
-      else if (action === 'resetMatch') { closeModal(); dispatch('resetMatch'); }
+      else if (action === 'resetMatch') {
+        closeModal();
+        closeSetup();
+        closeRoster();
+        dispatch('resetMatch');
+      }
       else if (action === 'closeModal') closeModal();
       else if (action === 'makeSub') {
         const rCard = document.getElementById('recommendCard');
@@ -3811,19 +3984,32 @@
           manualOutId = null; manualInId = null;
         }
       }
-      else if (action === 'draftAddPlayer') {
-        const input = document.getElementById('draftPlayerName');
-        const name = input.value.trim();
-        if (name) {
-          draft.roster.push({ id: Engine.generateId(), name });
-          input.value = '';
-          renderSetup();
-        }
-      }
+      else if (action === 'draftAddPlayer') handleDraftAddPlayer();
       else if (action === 'draftToggleStarter') {
+        if (!draft || Engine.hasMatchActivity(state)) return;
+        if ((draft.absentIds || []).includes(id)) return;
         const idx = draft.starterIds.indexOf(id);
         if (idx >= 0) draft.starterIds.splice(idx, 1);
         else if (draft.starterIds.length < draft.settings.fieldSize) draft.starterIds.push(id);
+        renderSetup();
+      }
+      else if (action === 'draftToggleAbsent') {
+        if (!draft || Engine.hasMatchActivity(state)) return;
+        draft.absentIds = draft.absentIds || [];
+        const idx = draft.absentIds.indexOf(id);
+        if (idx >= 0) {
+          draft.absentIds.splice(idx, 1);
+        } else {
+          draft.absentIds.push(id);
+          draft.starterIds = (draft.starterIds || []).filter(sid => sid !== id);
+        }
+        renderSetup();
+      }
+      else if (action === 'draftRemovePlayer') {
+        if (!draft || Engine.hasMatchActivity(state)) return;
+        draft.roster = (draft.roster || []).filter(r => r.id !== id);
+        draft.starterIds = (draft.starterIds || []).filter(sid => sid !== id);
+        draft.absentIds = (draft.absentIds || []).filter(aid => aid !== id);
         renderSetup();
       }
       else if (action === 'downloadHtml') {
@@ -3835,10 +4021,19 @@
       }
       else if (action === 'reload') window.location.reload();
       else if (action === 'resetApp') {
-        if (confirm('Are you sure you want to delete ALL data?')) {
-          localStorage.clear();
-          window.location.reload();
-        }
+        showActionModal(
+          'Delete All App Data?',
+          'This permanently deletes all saved Soccer and Basketball teams and match data.',
+          [
+            { label: 'Cancel', dataset: { action: 'closeModal' } },
+            { label: 'Delete All Data', className: 'bg-red-700', dataset: { action: 'confirmResetApp' } }
+          ]
+        );
+      }
+      else if (action === 'confirmResetApp') {
+        closeModal();
+        localStorage.clear();
+        window.location.reload();
       }
     });
 
@@ -3847,6 +4042,27 @@
         e.preventDefault();
         handleLiveAdd(false);
       }
+    });
+
+    document.getElementById('draftPlayerName').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleDraftAddPlayer();
+      }
+    });
+
+    [
+      ['draftFieldSize', 'fieldSize'],
+      ['draftMinutes', 'periodMinutes']
+    ].forEach(([elId, key]) => {
+      document.getElementById(elId).addEventListener('change', (e) => {
+        if (!draft || Engine.hasMatchActivity(state)) return;
+        const val = parseInt(e.target.value, 10);
+        if (!Number.isNaN(val)) {
+          draft.settings[key] = val;
+          renderSetup();
+        }
+      });
     });
 
     // Inject Rest and open-slot Enter Field/Court buttons onto bench cards
