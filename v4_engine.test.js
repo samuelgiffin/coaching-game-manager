@@ -620,5 +620,118 @@ test('Live Roster Schema, Presence Helpers & Roster-Aware Undo', async (t) => {
   });
 });
 
+test('Pure Prorated Fairness & Late-Arrival Recommendation Ranking (Soccer + Basketball)', async (t) => {
+  await t.test('late arrival enters with 0:00 fairDeltaMs and queues behind waiting bench player in Soccer', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'p1', name: 'Starter1' },
+      { id: 'p2', name: 'Starter2' },
+      { id: 'p3', name: 'BenchWaiter' },
+      { id: 'p4', name: 'LateKid' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    // p4 starts absent
+    s.match.players.p4.absent = true;
+    s.match.players.p4.arrivedAtMs = null;
+    s.match.players.p4.firstArrivedAtMs = null;
 
+    s = Engine.start(s, 0);
+    // At 3:00 (180,000 ms): p1 & p2 played 180s, p3 waited 180s (totalMs = 0), then p3 subs in for 60s so p3 has 60s played
+    s = Engine.substitute(s, 'p1', 'p3', 180000);
+    // At 4:00 (240,000 ms): p1=180s, p2=240s, p3=60s; now sub p1 back in so p3 is on bench with 60s played (underplayed vs 160s avg)
+    s = Engine.substitute(s, 'p3', 'p1', 240000);
+    // At 4:00 (240,000 ms): p4 arrives late with 0s played, 0s present
+    s.match.players.p4.absent = false;
+    s.match.players.p4.arrivedAtMs = 240000;
+    s.match.players.p4.firstArrivedAtMs = 240000;
+    s.match.players.p4.stintStartMs = 240000;
+
+    const tLate = Engine.times(s, 'p4', 240000);
+    const tWaiter = Engine.times(s, 'p3', 240000);
+    assert.strictEqual(tLate.presentMs, 0);
+    assert.strictEqual(tLate.targetMs, 0);
+    assert.strictEqual(tLate.fairDeltaMs, 0, 'Late arrival must start at 0:00 fairDeltaMs');
+    assert.strictEqual(tLate.satMs, 0, 'Late arrival satMs must start at 0:00');
+    assert.ok(tWaiter.fairDeltaMs < 0, `BenchWaiter should be negative fairDeltaMs, got ${tWaiter.fairDeltaMs}`);
+
+    // Even though p4 has totalMs=0 and p3 has totalMs=60s, p3 has negative fairDeltaMs (-100s) vs p4 (0s).
+    // Clear lastSubOutId so we purely test prorated fairness ranking.
+    s.match.lastSubOutId = null;
+    const rec = Engine.recommend(s, 240000);
+    assert.strictEqual(rec.inId, 'p3', 'Soccer recommend must pick underplayed BenchWaiter ahead of just-arrived LateKid');
+  });
+
+  await t.test('Basketball recommendBatch excludes absent players and ranks late arrival by prorated fairDeltaMs', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'p1', name: 'Steph' },
+      { id: 'p2', name: 'Klay' },
+      { id: 'p3', name: 'Poole' },
+      { id: 'p4', name: 'LateArrival' },
+      { id: 'p5', name: 'StillAbsent' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s.match.players.p4.absent = true;
+    s.match.players.p4.arrivedAtMs = null;
+    s.match.players.p4.firstArrivedAtMs = null;
+    s.match.players.p5.absent = true;
+    s.match.players.p5.arrivedAtMs = null;
+    s.match.players.p5.firstArrivedAtMs = null;
+
+    s = Engine.start(s, 0);
+    // Only p3 is on bench at 2:00 (p4 & p5 absent) -> batch should swap 1 pair (only p3)
+    const batchBefore = Engine.recommendBatch(s, 120000);
+    assert.deepStrictEqual(batchBefore.inIds, ['p3']);
+
+    // Give p3 30s of play then put back on bench at 3:00 so p3 has 30s played (still strongly underplayed)
+    s = Engine.substitute(s, 'p1', 'p3', 120000);
+    s = Engine.substitute(s, 'p3', 'p1', 150000);
+
+    // At 3:00 (180,000 ms), p4 arrives late (0s played, 0:00 fairDeltaMs), p5 remains absent
+    s.match.players.p4.absent = false;
+    s.match.players.p4.arrivedAtMs = 180000;
+    s.match.players.p4.firstArrivedAtMs = 180000;
+    s.match.players.p4.stintStartMs = 180000;
+
+    const batchAfter = Engine.recommendBatch(s, 180000);
+    assert.deepStrictEqual(batchAfter.inIds, ['p3', 'p4'], 'Poole (underplayed) must rank first ahead of LateArrival, and StillAbsent excluded');
+  });
+
+  await t.test('shorthanded start (4 of 5) keeps all 4 active players at 0:00 fairDeltaMs', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 5, periodMinutes: 8, periodCount: 4 };
+    s.roster = ['p1', 'p2', 'p3', 'p4'].map(id => ({ id, name: id }));
+    s.starterIds = ['p1', 'p2', 'p3', 'p4'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+
+    const t1 = Engine.times(s, 'p1', 180000);
+    assert.strictEqual(t1.totalMs, 180000);
+    assert.strictEqual(t1.targetMs, 180000);
+    assert.strictEqual(t1.fairDeltaMs, 0);
+  });
+
+  await t.test('recommend and recommendBatch treat all-absent bench as no-bench', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'p1', name: 'Starter1' },
+      { id: 'p2', name: 'Starter2' },
+      { id: 'p3', name: 'AbsentKid' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s.match.players.p3.absent = true;
+    s.match.players.p3.arrivedAtMs = null;
+    s.match.players.p3.firstArrivedAtMs = null;
+
+    assert.strictEqual(Engine.recommend(s, 60000).status, 'no-bench');
+    s.sport = 'basketball';
+    assert.strictEqual(Engine.recommendBatch(s, 60000).status, 'no-bench');
+  });
+});
 

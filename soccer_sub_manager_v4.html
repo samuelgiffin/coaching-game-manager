@@ -1118,29 +1118,39 @@
       },
       times: function (state, id, now) {
         const p = state.match.players[id];
-        if (!p) return { periodMs: 0, totalMs: 0, shiftMs: 0, satMs: 0, fairDeltaMs: 0 };
+        if (!p) return { periodMs: 0, totalMs: 0, shiftMs: 0, satMs: 0, presentMs: 0, targetMs: 0, fairDeltaMs: 0 };
         const cMs = this.clockMs(state, now);
         const own = this._rawTimes(state, id, cMs);
+        const ownPresentMs = this.playerPresentMs(state, id, now);
 
-        let sumTotal = 0;
-        let count = 0;
+        let totalActivePlayedMs = 0;
+        let totalActivePresentMs = 0;
+        let activeCount = 0;
         if (Array.isArray(state.roster)) {
           for (let i = 0; i < state.roster.length; i++) {
             const rId = state.roster[i].id;
             const rp = state.match.players[rId];
-            if (!rp || rp.resting || rp.fouledOut) continue;
-            sumTotal += this._rawTimes(state, rId, cMs).totalMs;
-            count++;
+            if (!rp || rp.absent || rp.resting || rp.fouledOut) continue;
+            totalActivePlayedMs += this._rawTimes(state, rId, cMs).totalMs;
+            totalActivePresentMs += this.playerPresentMs(state, rId, now);
+            activeCount++;
           }
         }
-        const avgTotal = count > 0 ? sumTotal / count : own.totalMs;
-        const fairDeltaMs = own.totalMs - avgTotal;
+        let targetMs = own.totalMs;
+        if (totalActivePresentMs > 0) {
+          targetMs = Math.round(totalActivePlayedMs * (ownPresentMs / totalActivePresentMs));
+        } else if (activeCount > 0) {
+          targetMs = Math.round(totalActivePlayedMs / activeCount);
+        }
+        const fairDeltaMs = own.totalMs - targetMs;
 
         return {
           periodMs: own.periodMs,
           totalMs: own.totalMs,
           shiftMs: own.shiftMs,
           satMs: own.satMs,
+          presentMs: ownPresentMs,
+          targetMs,
           fairDeltaMs
         };
       },
@@ -1169,40 +1179,30 @@
         let inCandidates = [];
         let outCandidates = [];
 
-        let sumTotal = 0;
-        let count = 0;
-        for (let r of state.roster) {
-          if (!state.match.players[r.id]) continue;
-          let t = this.times(state, r.id, now);
-          sumTotal += t.totalMs;
-          count++;
-        }
-        const avgTotal = count > 0 ? sumTotal / count : 0;
-
-        for (let r of state.roster) {
-          let t = this.times(state, r.id, now);
-          t.fairDeltaMs = t.totalMs - avgTotal;
-          let p = state.match.players[r.id];
+        for (let i = 0; i < state.roster.length; i++) {
+          const r = state.roster[i];
+          const p = state.match.players[r.id];
           if (!p) continue;
+          const t = this.times(state, r.id, now);
 
           if (!p.onField) {
-            if (!p.resting && !p.fouledOut && !state.match.skipIds.includes(r.id)) {
-              inCandidates.push({ id: r.id, t, p, index: state.roster.indexOf(r) });
+            if (!p.absent && !p.resting && !p.fouledOut && !state.match.skipIds.includes(r.id)) {
+              inCandidates.push({ id: r.id, t, p, index: i });
             }
           } else {
-            outCandidates.push({ id: r.id, t, p, index: state.roster.indexOf(r) });
+            outCandidates.push({ id: r.id, t, p, index: i });
           }
         }
 
         const nonRestingBenchCount = state.roster.filter(r => {
           let p = state.match.players[r.id];
-          return p && !p.onField && !p.resting && !p.fouledOut;
+          return p && !p.onField && !p.absent && !p.resting && !p.fouledOut;
         }).length;
 
         if (nonRestingBenchCount === 0) {
           const anyBench = state.roster.some(r => {
             let p = state.match.players[r.id];
-            return p && !p.onField;
+            return p && !p.onField && !p.absent;
           });
           if (!anyBench) return { outId: null, inId: null, status: 'no-bench' };
           return { outId: null, inId: null, status: 'none-eligible' };
@@ -1217,9 +1217,11 @@
           if (b.id === state.match.pinnedId && a.id !== state.match.pinnedId) return 1;
           if (a.id === state.match.lastSubOutId && b.id !== state.match.lastSubOutId) return 1;
           if (b.id === state.match.lastSubOutId && a.id !== state.match.lastSubOutId) return -1;
-          if (a.t.totalMs !== b.t.totalMs) return a.t.totalMs - b.t.totalMs;
+          const dFair = Math.round(a.t.fairDeltaMs) - Math.round(b.t.fairDeltaMs);
+          if (dFair !== 0) return dFair;
           if (a.t.periodMs !== b.t.periodMs) return a.t.periodMs - b.t.periodMs;
           if (a.t.satMs !== b.t.satMs) return b.t.satMs - a.t.satMs;
+          if (a.t.totalMs !== b.t.totalMs) return a.t.totalMs - b.t.totalMs;
           return a.index - b.index;
         });
 
@@ -1228,8 +1230,10 @@
           const bShort = b.t.shiftMs < MIN_SHIFT_MS;
           if (aShort && !bShort) return 1;
           if (!aShort && bShort) return -1;
-          if (a.t.totalMs !== b.t.totalMs) return b.t.totalMs - a.t.totalMs;
+          const dFair = Math.round(b.t.fairDeltaMs) - Math.round(a.t.fairDeltaMs);
+          if (dFair !== 0) return dFair;
           if (a.t.shiftMs !== b.t.shiftMs) return b.t.shiftMs - a.t.shiftMs;
+          if (a.t.totalMs !== b.t.totalMs) return b.t.totalMs - a.t.totalMs;
           return a.index - b.index;
         });
 
@@ -1248,7 +1252,7 @@
           if (!p) continue;
           const t = this.times(state, r.id, now);
           if (!p.onField) {
-            if (!p.resting && !p.fouledOut && !state.match.skipIds.includes(r.id)) {
+            if (!p.absent && !p.resting && !p.fouledOut && !state.match.skipIds.includes(r.id)) {
               inCandidates.push({ id: r.id, t, p, index: i });
             }
           } else {
@@ -1258,13 +1262,13 @@
 
         const eligibleBenchCount = state.roster.filter(r => {
           const p = state.match.players[r.id];
-          return p && !p.onField && !p.resting && !p.fouledOut;
+          return p && !p.onField && !p.absent && !p.resting && !p.fouledOut;
         }).length;
 
         if (eligibleBenchCount === 0) {
           const anyBench = state.roster.some(r => {
             const p = state.match.players[r.id];
-            return p && !p.onField;
+            return p && !p.onField && !p.absent;
           });
           if (!anyBench) return { outIds: [], inIds: [], pairs: [], status: 'no-bench' };
           return { outIds: [], inIds: [], pairs: [], status: 'none-eligible' };
@@ -1277,15 +1281,19 @@
         inCandidates.sort((a, b) => {
           if (a.id === state.match.pinnedId && b.id !== state.match.pinnedId) return -1;
           if (b.id === state.match.pinnedId && a.id !== state.match.pinnedId) return 1;
-          if (a.t.totalMs !== b.t.totalMs) return a.t.totalMs - b.t.totalMs;
+          const dFair = Math.round(a.t.fairDeltaMs) - Math.round(b.t.fairDeltaMs);
+          if (dFair !== 0) return dFair;
           if (a.t.periodMs !== b.t.periodMs) return a.t.periodMs - b.t.periodMs;
           if (a.t.satMs !== b.t.satMs) return b.t.satMs - a.t.satMs;
+          if (a.t.totalMs !== b.t.totalMs) return a.t.totalMs - b.t.totalMs;
           return a.index - b.index;
         });
 
         outCandidates.sort((a, b) => {
-          if (a.t.totalMs !== b.t.totalMs) return b.t.totalMs - a.t.totalMs;
+          const dFair = Math.round(b.t.fairDeltaMs) - Math.round(a.t.fairDeltaMs);
+          if (dFair !== 0) return dFair;
           if (a.t.shiftMs !== b.t.shiftMs) return b.t.shiftMs - a.t.shiftMs;
+          if (a.t.totalMs !== b.t.totalMs) return b.t.totalMs - a.t.totalMs;
           return a.index - b.index;
         });
 
