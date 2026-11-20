@@ -1,0 +1,9 @@
+# Dependencies
+node_modules/
+
+# Local scratch & tool artifacts
+.superpowers/
+*:Zone.Identifier
+.DS_Store
+Thumbs.db
+*.log
