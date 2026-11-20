@@ -1749,6 +1749,9 @@
         target.arrivedAtMs = null;
         target.resting = false;
         target.departedAtMs = activeMatch ? mMs : null;
+        if (!activeMatch || target.presentMs === 0) {
+          target.firstArrivedAtMs = null;
+        }
 
         if (target.onField) {
           target.periodMs[newState.match.period - 1] =
@@ -1967,12 +1970,28 @@
         const sportCfg = this.getSportConfig(state);
         const isBball = sportCfg.id === 'basketball';
         const periodCount = state.settings.periodCount || 4;
-        const activePlayers = state.roster.filter(r => state.match.players[r.id] && !state.match.players[r.id].resting && !state.match.players[r.id].fouledOut);
-        const elapsedMs = this.clockMs(state, now);
-        const totalPeriodElapsedMs = (state.match.period - 1) * state.settings.periodMinutes * 60 * 1000 + elapsedMs;
+        const cMs = this.clockMs(state, now);
+        const matchElapsed = this.matchElapsedMs(state, now);
 
-        const totalFieldMs = totalPeriodElapsedMs * state.settings.fieldSize;
-        const targetMs = activePlayers.length > 0 ? Math.round(totalFieldMs / activePlayers.length) : 0;
+        const snapshots = state.roster.map(r => {
+          const p = state.match.players[r.id] || { periodMs: [], badges: [] };
+          const totalMs = this._rawTimes(state, r.id, cMs).totalMs;
+          const presentMs = this.playerPresentMs(state, r.id, now);
+          return { r, p, totalMs, presentMs };
+        });
+
+        let totalPlayedMs = 0;
+        let totalPresentMs = 0;
+        for (const snap of snapshots) {
+          if (!snap.p.resting && !snap.p.fouledOut && (snap.presentMs > 0 || snap.totalMs > 0)) {
+            totalPlayedMs += snap.totalMs;
+            totalPresentMs += snap.presentMs;
+          }
+        }
+
+        const targetMs = totalPresentMs > 0 && matchElapsed > 0
+          ? Math.round(totalPlayedMs * (matchElapsed / totalPresentMs))
+          : 0;
 
         let totalBadges = 0;
         let maxPlayerMs = 0;
@@ -1998,10 +2017,7 @@
         const totalUs = usByPeriod.reduce((a, b) => a + b, 0) || (state.match.score?.us || 0);
         const totalThem = themByPeriod.reduce((a, b) => a + b, 0) || (state.match.score?.them || 0);
 
-        const playerMetrics = state.roster.map(r => {
-          const p = state.match.players[r.id] || { periodMs: [], badges: [] };
-          const t = this.times(state, r.id, now);
-          const totalMs = t.totalMs;
+        const playerMetrics = snapshots.map(({ r, p, totalMs, presentMs }) => {
           if (totalMs > maxPlayerMs) maxPlayerMs = totalMs;
 
           const badgeCounts = { hustle: 0, save: 0, pass: 0, kick: 0, teammate: 0, defense: 0, rebound: 0, shot: 0 };
@@ -2025,17 +2041,31 @@
             }
           });
 
-          const diff = totalMs - targetMs;
-          let fairnessStatus = 'equal';
-          if (diff > 90000) fairnessStatus = 'over';
-          else if (diff < -90000) fairnessStatus = 'under';
+          const absentAllGame = presentMs === 0 && totalMs === 0 && Boolean(p.absent);
+          const firstArr = p.firstArrivedAtMs === undefined ? (p.absent ? null : 0) : p.firstArrivedAtMs;
+          const arrivedLate = !absentAllGame && firstArr !== null && firstArr > 0;
+          const leftEarly = !absentAllGame && Boolean(p.absent) && p.departedAtMs !== null && p.departedAtMs !== undefined;
+          const playerTargetMs = absentAllGame
+            ? 0
+            : (totalPresentMs > 0 ? Math.round(totalPlayedMs * (presentMs / totalPresentMs)) : 0);
+          const diff = absentAllGame ? 0 : (totalMs - playerTargetMs);
+          let fairnessStatus = absentAllGame ? 'absent' : 'equal';
+          if (!absentAllGame) {
+            if (diff > 90000) fairnessStatus = 'over';
+            else if (diff < -90000) fairnessStatus = 'under';
+          }
 
           return {
             id: r.id,
             name: r.name,
             totalMs,
+            presentMs,
+            targetMs: playerTargetMs,
             targetDeltaMs: diff,
             fairnessStatus,
+            absentAllGame,
+            arrivedLate,
+            leftEarly,
             fouledOut: Boolean(p.fouledOut),
             pointsScored,
             pointsByPeriod,

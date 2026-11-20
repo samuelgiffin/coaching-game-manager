@@ -893,3 +893,108 @@ test('Safe Live Roster Actions & Non-Destructive Setup', async (t) => {
   });
 });
 
+test('Match Report Prorated Targets & Absentee Handling', async (t) => {
+  await t.test('recapMetrics gives late arrival an individual prorated target and marks full-game absentee cleanly', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 10, periodCount: 2 };
+    s.roster = [
+      { id: 'p1', name: 'Full1' },
+      { id: 'p2', name: 'Full2' },
+      { id: 'p3', name: 'LateKid' },
+      { id: 'p4', name: 'NoShow' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.markPlayerAbsent(s, 'p3', null, 0);
+    s = Engine.markPlayerAbsent(s, 'p4', null, 0);
+
+    s = Engine.start(s, 0);
+    // p3 arrives at 5:00 (300,000 ms), plays 2:30 (150,000 ms) from 5:00 to 7:30, sits 7:30 to 10:00
+    s = Engine.markPlayerArrived(s, 'p3', { putOnField: false }, 300000);
+    s = Engine.substitute(s, 'p1', 'p3', 300000);
+    s = Engine.substitute(s, 'p3', 'p1', 450000);
+
+    // Evaluate at 10:00 (600,000 ms)
+    const metrics = Engine.recapMetrics(s, 600000);
+    const m1 = metrics.players.find(p => p.id === 'p1');
+    const m3 = metrics.players.find(p => p.id === 'p3');
+    const m4 = metrics.players.find(p => p.id === 'p4');
+
+    // Present times: p1=600s, p2=600s, p3=300s (total 1500s). Total played = 1200s.
+    // Prorated targets: p1=480s, p2=480s, p3=240s.
+    assert.strictEqual(m1.targetMs, 480000);
+    assert.strictEqual(m3.targetMs, 240000);
+    assert.strictEqual(m3.arrivedLate, true);
+    assert.strictEqual(m3.absentAllGame, false);
+    assert.strictEqual(m3.fairnessStatus, 'equal', '150s vs 240s target is within 90s tolerance -> equal');
+
+    assert.strictEqual(m4.absentAllGame, true);
+    assert.strictEqual(m4.targetMs, 0);
+    assert.strictEqual(m4.fairnessStatus, 'absent');
+  });
+
+  await t.test('recapMetrics handles leftEarly, over/under thresholds, kickoff 0:00, and fouledOut prorating', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 10, periodCount: 2 };
+    s.roster = [
+      { id: 'p1', name: 'LeftEarly' },
+      { id: 'p2', name: 'FullStar' },
+      { id: 'p3', name: 'SubIn' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+
+    // Pre-kickoff (matchElapsed === 0)
+    const pre = Engine.recapMetrics(s, 0);
+    assert.strictEqual(pre.targetMs, 0);
+    assert.strictEqual(pre.players[0].targetMs, 0);
+    assert.strictEqual(pre.players[0].fairnessStatus, 'equal');
+
+    s = Engine.start(s, 0);
+    // At 5:00 (300,000 ms), p1 leaves early and p3 subs in
+    s = Engine.markPlayerAbsent(s, 'p1', 'p3', 300000);
+
+    const mid = Engine.recapMetrics(s, 600000);
+    const mp1 = mid.players.find(p => p.id === 'p1');
+    const mp2 = mid.players.find(p => p.id === 'p2');
+    const mp3 = mid.players.find(p => p.id === 'p3');
+
+    assert.strictEqual(mp1.presentMs, 300000);
+    assert.strictEqual(mp1.targetMs, 240000);
+    assert.strictEqual(mp1.targetDeltaMs, 60000);
+    assert.strictEqual(mp1.fairnessStatus, 'equal');
+    assert.strictEqual(mp1.leftEarly, true);
+    assert.strictEqual(mp1.arrivedLate, false);
+    assert.strictEqual(mp1.absentAllGame, false);
+
+    assert.strictEqual(mp2.targetMs, 480000);
+    assert.strictEqual(mp2.targetDeltaMs, 120000);
+    assert.strictEqual(mp2.fairnessStatus, 'over');
+
+    assert.strictEqual(mp3.targetMs, 480000);
+    assert.strictEqual(mp3.targetDeltaMs, -180000);
+    assert.strictEqual(mp3.fairnessStatus, 'under');
+    assert.strictEqual(mid.targetMs, 480000);
+
+    // Basketball fouledOut player gets prorated target using attending rate without polluting pool
+    let b = Engine.createState('basketball');
+    b.settings = { fieldSize: 2, periodMinutes: 10, periodCount: 4 };
+    b.roster = [
+      { id: 'b1', name: 'Fouled' },
+      { id: 'b2', name: 'Active1' },
+      { id: 'b3', name: 'Active2' }
+    ];
+    b.starterIds = ['b1', 'b2'];
+    b = Engine.resetMatch(b, 0);
+    b = Engine.start(b, 0);
+    b = Engine.toggleFoulOut(b, 'b1', 300000);
+    b = Engine.enterField(b, 'b3', 300000);
+    b = Engine.start(b, 300000);
+
+    const bMetrics = Engine.recapMetrics(b, 600000);
+    const mb1 = bMetrics.players.find(p => p.id === 'b1');
+    assert.strictEqual(mb1.fouledOut, true);
+    assert.strictEqual(mb1.presentMs, 600000);
+    assert.strictEqual(mb1.targetMs, 450000);
+  });
+});
