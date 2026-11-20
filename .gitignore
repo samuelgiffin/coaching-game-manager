@@ -1,8 +1,20 @@
 # Dependencies
 node_modules/
 
-# Local scratch & tool artifacts
+# Local AI agent workflow & development scaffolding
+AGENTS.md
+.agents/
+agents/
+skills/
+references/
 .superpowers/
+
+# Local design docs, inspection scripts & screenshots
+docs/
+inspect_v4.js
+v4_*.png
+
+# OS & log artifacts
 *:Zone.Identifier
 .DS_Store
 Thumbs.db
