@@ -1619,6 +1619,221 @@
         }
         return newState;
       },
+      _countOnField: function (state) {
+        let c = 0;
+        for (const r of state.roster) {
+          const p = state.match.players[r.id];
+          if (p && p.onField && !p.absent) c++;
+        }
+        return c;
+      },
+      _createPlayerState: function (periodCount, opts = {}) {
+        const absent = Boolean(opts.absent);
+        const arrivedAtMs = absent ? null : (opts.arrivedAtMs ?? 0);
+        const firstArrivedAtMs = absent ? null : (opts.firstArrivedAtMs ?? arrivedAtMs);
+        return {
+          onField: Boolean(opts.onField),
+          stintStartMs: opts.stintStartMs ?? 0,
+          periodMs: Array(periodCount).fill(0),
+          resting: false,
+          fouledOut: false,
+          absent,
+          arrivedAtMs,
+          firstArrivedAtMs,
+          departedAtMs: null,
+          presentMs: 0,
+          badges: []
+        };
+      },
+      addPlayerLive: function (state, name, opts = {}, now) {
+        const trimmed = String(name || '').trim();
+        const errors = [];
+        if (state.roster.length >= 18) errors.push('Roster limit reached (max 18 players)');
+        if (trimmed.length < 1 || trimmed.length > 20) errors.push('Player name must be 1–20 characters');
+        if (state.roster.some(r => r.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+          errors.push(`Duplicate name: ${trimmed}`);
+        }
+        if (errors.length > 0) return { ok: false, state, errors };
+
+        const newState = JSON.parse(JSON.stringify(state));
+        const cMs = this.clockMs(state, now);
+        const mMs = this.matchElapsedMs(state, now);
+        const absent = Boolean(opts && opts.absent);
+        const onFieldCount = this._countOnField(state);
+        const putOnField = !absent && Boolean(opts && opts.putOnField) && onFieldCount < state.settings.fieldSize;
+        const id = this.generateId();
+        const sportCfg = this.getSportConfig(state);
+
+        newState.match.undo = {
+          label: `Added ${trimmed}${putOnField ? ` → ${sportCfg.surfaceNoun}` : ''}`,
+          keepClock: true,
+          roster: JSON.parse(JSON.stringify(state.roster)),
+          starterIds: JSON.parse(JSON.stringify(state.starterIds || [])),
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+
+        newState.roster.push({ id, name: trimmed });
+        if (!this.hasMatchActivity(state) && putOnField && !newState.starterIds.includes(id)) {
+          newState.starterIds.push(id);
+        }
+        newState.match.players[id] = this._createPlayerState(newState.settings.periodCount, {
+          onField: putOnField,
+          stintStartMs: cMs,
+          absent,
+          arrivedAtMs: mMs,
+          firstArrivedAtMs: mMs
+        });
+        return { ok: true, state: newState, playerId: id, errors: [] };
+      },
+      markPlayerArrived: function (state, playerId, opts = {}, now) {
+        const p = state.match.players[playerId];
+        const r = state.roster.find(x => x.id === playerId);
+        if (!p || !r || !p.absent) return state;
+
+        const newState = JSON.parse(JSON.stringify(state));
+        const cMs = this.clockMs(state, now);
+        const mMs = this.matchElapsedMs(state, now);
+        const onFieldCount = this._countOnField(state);
+        const putOnField = Boolean(opts && opts.putOnField) && onFieldCount < state.settings.fieldSize;
+        const sportCfg = this.getSportConfig(state);
+
+        newState.match.undo = {
+          label: `${r.name} Arrived${putOnField ? ` → ${sportCfg.surfaceNoun}` : ''}`,
+          keepClock: true,
+          starterIds: JSON.parse(JSON.stringify(state.starterIds || [])),
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+
+        const target = newState.match.players[playerId];
+        target.absent = false;
+        target.arrivedAtMs = mMs;
+        if (target.firstArrivedAtMs === null || target.firstArrivedAtMs === undefined) {
+          target.firstArrivedAtMs = mMs;
+        }
+        target.departedAtMs = null;
+        target.resting = false;
+        target.stintStartMs = cMs;
+        target.onField = putOnField;
+
+        if (!this.hasMatchActivity(state) && putOnField && !newState.starterIds.includes(playerId)) {
+          newState.starterIds.push(playerId);
+        }
+        return newState;
+      },
+      markPlayerAbsent: function (state, playerId, subInId = null, now) {
+        const p = state.match.players[playerId];
+        const r = state.roster.find(x => x.id === playerId);
+        if (!p || !r || p.absent) return state;
+
+        const newState = JSON.parse(JSON.stringify(state));
+        const cMs = this.clockMs(state, now);
+        const mMs = this.matchElapsedMs(state, now);
+        const activeMatch = this.hasMatchActivity(state);
+        const subR = subInId ? state.roster.find(x => x.id === subInId) : null;
+
+        newState.match.undo = {
+          label: activeMatch
+            ? `${r.name} Left Early${subR ? ` (⇄ ${subR.name})` : ''}`
+            : `${r.name} Marked Absent`,
+          keepClock: true,
+          starterIds: JSON.parse(JSON.stringify(state.starterIds || [])),
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+
+        const target = newState.match.players[playerId];
+        const arrivedAt = target.arrivedAtMs === undefined ? 0 : target.arrivedAtMs;
+        if (arrivedAt !== null) {
+          target.presentMs = (target.presentMs || 0) + Math.max(0, mMs - arrivedAt);
+        }
+        target.absent = true;
+        target.arrivedAtMs = null;
+        target.resting = false;
+        target.departedAtMs = activeMatch ? mMs : null;
+
+        if (target.onField) {
+          target.periodMs[newState.match.period - 1] =
+            (target.periodMs[newState.match.period - 1] || 0) + (cMs - target.stintStartMs);
+          target.onField = false;
+          target.stintStartMs = cMs;
+          if (!activeMatch) {
+            newState.starterIds = (newState.starterIds || []).filter(id => id !== playerId);
+          }
+          if (subInId) {
+            const inP = newState.match.players[subInId];
+            if (inP && !inP.onField && !inP.absent && !inP.fouledOut) {
+              inP.onField = true;
+              inP.stintStartMs = cMs;
+              inP.resting = false;
+              if (!activeMatch && !newState.starterIds.includes(subInId)) {
+                newState.starterIds.push(subInId);
+              }
+              if (newState.match.pinnedId === subInId) newState.match.pinnedId = null;
+              newState.match.skipIds = [];
+            }
+          }
+        }
+        if (newState.match.pinnedId === playerId) newState.match.pinnedId = null;
+        newState.match.skipIds = (newState.match.skipIds || []).filter(id => id !== playerId);
+        return newState;
+      },
+      enterField: function (state, playerId, now) {
+        const p = state.match.players[playerId];
+        const r = state.roster.find(x => x.id === playerId);
+        if (!p || !r || p.onField || p.absent || p.fouledOut) return state;
+        if (this._countOnField(state) >= state.settings.fieldSize) return state;
+
+        const newState = JSON.parse(JSON.stringify(state));
+        const cMs = this.clockMs(state, now);
+        const sportCfg = this.getSportConfig(state);
+
+        newState.match.undo = {
+          label: `${r.name} → ${sportCfg.surfaceNoun}`,
+          keepClock: true,
+          starterIds: JSON.parse(JSON.stringify(state.starterIds || [])),
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+
+        const target = newState.match.players[playerId];
+        target.onField = true;
+        target.stintStartMs = cMs;
+        target.resting = false;
+        if (!this.hasMatchActivity(state) && !newState.starterIds.includes(playerId)) {
+          newState.starterIds.push(playerId);
+        }
+        if (newState.match.pinnedId === playerId) newState.match.pinnedId = null;
+        return newState;
+      },
+      removePlayerFromRoster: function (state, playerId, now) {
+        const r = state.roster.find(x => x.id === playerId);
+        if (!r) return { ok: false, state, reason: 'not-found', errors: ['Player not found'] };
+        if (state.roster.length <= 1) {
+          return { ok: false, state, reason: 'last-player', errors: ['Roster must have at least 1 player.'] };
+        }
+        if (this.playerHasMatchData(state, playerId, now)) {
+          return {
+            ok: false,
+            state,
+            reason: 'has-match-data',
+            errors: [`${r.name} has recorded playtime or stats in this match. Mark them Left Early instead to keep the Match Report intact.`]
+          };
+        }
+
+        const newState = JSON.parse(JSON.stringify(state));
+        newState.match.undo = {
+          label: `Removed ${r.name}`,
+          keepClock: true,
+          roster: JSON.parse(JSON.stringify(state.roster)),
+          starterIds: JSON.parse(JSON.stringify(state.starterIds || [])),
+          match: JSON.parse(JSON.stringify(state.match))
+        };
+        newState.roster = newState.roster.filter(x => x.id !== playerId);
+        newState.starterIds = (newState.starterIds || []).filter(id => id !== playerId);
+        delete newState.match.players[playerId];
+        if (newState.match.pinnedId === playerId) newState.match.pinnedId = null;
+        if (newState.match.lastSubOutId === playerId) newState.match.lastSubOutId = null;
+        newState.match.skipIds = (newState.match.skipIds || []).filter(id => id !== playerId);
+        return { ok: true, state: newState, errors: [] };
+      },
       applySetup: function (state, draft, now) {
         let errors = [];
         if (draft.fieldSize < 2 || draft.fieldSize > 11) errors.push("Field size must be 2-11");
@@ -1626,41 +1841,71 @@
         if (draft.periodCount !== 2 && draft.periodCount !== 4) errors.push("Period count must be 2 or 4");
         if (draft.roster.length < 1 || draft.roster.length > 18) errors.push("Roster must have 1-18 players");
         let names = new Set();
-        draft.roster.forEach((r, i) => {
-          let tName = r.name.trim();
-          if (tName.length < 1 || tName.length > 20) errors.push(`Name "${r.name}" must be 1-20 chars`);
-          if (names.has(tName.toLowerCase())) errors.push(`Duplicate name: ${tName}`);
-          names.add(tName.toLowerCase());
-          draft.roster[i].name = tName;
+        const cleanRoster = draft.roster.map(r => ({ id: r.id, name: String(r.name || '').trim() }));
+        cleanRoster.forEach(r => {
+          if (r.name.length < 1 || r.name.length > 20) errors.push(`Name "${r.name}" must be 1-20 chars`);
+          if (names.has(r.name.toLowerCase())) errors.push(`Duplicate name: ${r.name}`);
+          names.add(r.name.toLowerCase());
         });
-        const reqStarters = Math.min(draft.fieldSize, draft.roster.length);
-        if (draft.starterIds.length !== reqStarters) errors.push(`Must select exactly ${reqStarters} starters`);
+
+        const matchActive = this.hasMatchActivity(state);
+        const absentSet = new Set(Array.isArray(draft.absentIds) ? draft.absentIds : []);
+        const uniqueStarters = [...new Set(Array.isArray(draft.starterIds) ? draft.starterIds : [])];
+
+        if (!matchActive) {
+          const presentRoster = cleanRoster.filter(r => !absentSet.has(r.id));
+          const reqStarters = Math.min(draft.fieldSize, presentRoster.length);
+          const validStarters = uniqueStarters.filter(id => presentRoster.some(r => r.id === id));
+          if (validStarters.length !== reqStarters) {
+            errors.push(`Must select exactly ${reqStarters} starters`);
+          }
+        }
 
         if (errors.length > 0) return { ok: false, state, errors };
         let newState = JSON.parse(JSON.stringify(state));
         newState.sport = draft.sport || state.sport || 'soccer';
-        const matchStarted = newState.match.period > 1 || newState.match.clock.elapsedMs > 0 || newState.match.clock.running;
 
-        if (!matchStarted) {
+        if (!matchActive) {
+          const prevUndo = state.match.undo;
           newState.settings.fieldSize = draft.fieldSize;
           newState.settings.periodMinutes = draft.periodMinutes;
           newState.settings.periodCount = draft.periodCount;
-          newState.roster = draft.roster;
-          newState.starterIds = draft.starterIds;
-          newState = this.resetMatch(newState, now);
-          newState.match.undo = null;
+          newState.roster = cleanRoster;
+          const presentIds = new Set(cleanRoster.filter(r => !absentSet.has(r.id)).map(r => r.id));
+          newState.starterIds = uniqueStarters.filter(id => presentIds.has(id));
+
+          const nextPlayers = {};
+          for (const r of cleanRoster) {
+            const isAbsent = absentSet.has(r.id);
+            const isStarter = !isAbsent && newState.starterIds.includes(r.id);
+            nextPlayers[r.id] = this._createPlayerState(newState.settings.periodCount, {
+              onField: isStarter,
+              stintStartMs: 0,
+              absent: isAbsent,
+              arrivedAtMs: 0,
+              firstArrivedAtMs: 0
+            });
+          }
+          newState.match.players = nextPlayers;
+          newState.match.completedPeriodsMs = 0;
+          newState.match.skipIds = [];
+          newState.match.pinnedId = null;
+          newState.match.lastSubOutId = null;
+          // Preserve Reset Match undo if present, otherwise avoid creating stale undo on first-time setup
+          newState.match.undo = (prevUndo && prevUndo.label === 'Reset Match') ? prevUndo : null;
         } else {
-          for (let r of draft.roster) {
+          const cMs = this.clockMs(newState, now);
+          const mMs = this.matchElapsedMs(newState, now);
+          for (const r of cleanRoster) {
             if (!newState.roster.find(ex => ex.id === r.id)) {
               newState.roster.push(r);
-              newState.match.players[r.id] = {
+              newState.match.players[r.id] = this._createPlayerState(newState.settings.periodCount, {
                 onField: false,
-                stintStartMs: this.clockMs(newState, now),
-                periodMs: Array(newState.settings.periodCount).fill(0),
-                resting: false,
-                fouledOut: false,
-                badges: []
-              };
+                stintStartMs: cMs,
+                absent: false,
+                arrivedAtMs: mMs,
+                firstArrivedAtMs: mMs
+              });
             }
           }
         }

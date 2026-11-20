@@ -735,3 +735,161 @@ test('Pure Prorated Fairness & Late-Arrival Recommendation Ranking (Soccer + Bas
   });
 });
 
+test('Safe Live Roster Actions & Non-Destructive Setup', async (t) => {
+  await t.test('addPlayerLive adds late player to bench or open field/court slot without resetting match', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 5, periodMinutes: 8, periodCount: 4 };
+    s.roster = ['p1', 'p2', 'p3', 'p4'].map(id => ({ id, name: id.toUpperCase() }));
+    s.starterIds = ['p1', 'p2', 'p3', 'p4'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+    s = Engine.recordScore(s, 'us', 'p1', 1, 60000);
+
+    // Duplicate rejected
+    const dup = Engine.addPlayerLive(s, 'p1', {}, 120000);
+    assert.strictEqual(dup.ok, false);
+
+    // Add 5th player straight onto open Field slot at 2:00 (120,000 ms)
+    const res = Engine.addPlayerLive(s, 'Sam', { putOnField: true }, 120000);
+    assert.strictEqual(res.ok, true);
+    s = res.state;
+    const pSam = s.match.players[res.playerId];
+    assert.strictEqual(pSam.onField, true);
+    assert.strictEqual(pSam.arrivedAtMs, 120000);
+    assert.strictEqual(pSam.firstArrivedAtMs, 120000);
+    assert.strictEqual(pSam.stintStartMs, 120000);
+    assert.strictEqual(s.match.score.us, 1, 'Score must remain intact');
+    assert.strictEqual(s.match.clock.running, true, 'Clock must keep running');
+
+    // Adding 6th player with putOnField=true while already 5/5 puts them on bench safely
+    const res6 = Engine.addPlayerLive(s, 'Alex', { putOnField: true }, 130000);
+    assert.strictEqual(res6.ok, true);
+    assert.strictEqual(res6.state.match.players[res6.playerId].onField, false);
+
+    // Undo restores roster without stopping clock
+    const undone = Engine.undo(res6.state, 140000);
+    assert.strictEqual(undone.roster.length, 5);
+    assert.strictEqual(undone.match.clock.running, true);
+  });
+
+  await t.test('markPlayerArrived, markPlayerAbsent (bench / swap / leave-open) and enterField work cleanly', () => {
+    let s = Engine.createState('basketball');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [
+      { id: 'p1', name: 'Steph' },
+      { id: 'p2', name: 'Klay' },
+      { id: 'p3', name: 'Poole' }
+    ];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    // Mark p3 absent pre-game
+    s = Engine.markPlayerAbsent(s, 'p3', null, 0);
+    assert.strictEqual(s.match.players.p3.absent, true);
+    assert.strictEqual(s.match.players.p3.departedAtMs, null);
+
+    s = Engine.start(s, 0);
+    // At 2:00, p2 leaves early with no replacement -> leaves court slot open (1/2)
+    s = Engine.markPlayerAbsent(s, 'p2', null, 120000);
+    assert.strictEqual(s.match.players.p2.absent, true);
+    assert.strictEqual(s.match.players.p2.onField, false);
+    assert.strictEqual(s.match.players.p2.periodMs[0], 120000);
+    assert.strictEqual(s.match.players.p2.presentMs, 120000);
+    assert.strictEqual(s.match.players.p2.departedAtMs, 120000);
+
+    // At 3:00, p3 arrives late onto Bench, then enters open Court slot via enterField
+    s = Engine.markPlayerArrived(s, 'p3', { putOnField: false }, 180000);
+    assert.strictEqual(s.match.players.p3.absent, false);
+    assert.strictEqual(s.match.players.p3.onField, false);
+    assert.strictEqual(s.match.players.p3.arrivedAtMs, 180000);
+
+    s = Engine.enterField(s, 'p3', 190000);
+    assert.strictEqual(s.match.players.p3.onField, true);
+    assert.strictEqual(s.match.players.p3.stintStartMs, 190000);
+
+    // p2 returns later at 4:00 (240,000 ms) -> presentMs preserved + new stint begins
+    s = Engine.markPlayerArrived(s, 'p2', { putOnField: false }, 240000);
+    assert.strictEqual(s.match.players.p2.absent, false);
+    assert.strictEqual(s.match.players.p2.departedAtMs, null);
+    assert.strictEqual(Engine.playerPresentMs(s, 'p2', 300000), 180000, '120s initial + 60s after return');
+
+    // p1 leaves early with p2 atomically subbed in at 5:00
+    s = Engine.markPlayerAbsent(s, 'p1', 'p2', 300000);
+    assert.strictEqual(s.match.players.p1.absent, true);
+    assert.strictEqual(s.match.players.p1.onField, false);
+    assert.strictEqual(s.match.players.p2.onField, true);
+  });
+
+  await t.test('removePlayerFromRoster blocks players with match stats and supports undo when removable', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 2, periodMinutes: 8, periodCount: 4 };
+    s.roster = [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }, { id: 'p3', name: 'C' }];
+    s.starterIds = ['p1', 'p2'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+
+    // p1 has playtime at 60s -> blocked
+    const blocked = Engine.removePlayerFromRoster(s, 'p1', 60000);
+    assert.strictEqual(blocked.ok, false);
+    assert.strictEqual(blocked.reason, 'has-match-data');
+
+    // p3 sat on bench with 0 playtime/goals/badges -> removable & undoable
+    const removed = Engine.removePlayerFromRoster(s, 'p3', 60000);
+    assert.strictEqual(removed.ok, true);
+    assert.strictEqual(removed.state.roster.length, 2);
+
+    const restored = Engine.undo(removed.state, 65000);
+    assert.strictEqual(restored.roster.length, 3);
+    assert.ok(restored.match.players.p3);
+  });
+
+  await t.test('applySetup mid-game never fails starterIds validation and never resets match', () => {
+    let s = Engine.createState('soccer');
+    s.settings = { fieldSize: 5, periodMinutes: 8, periodCount: 4 };
+    s.roster = ['p1', 'p2', 'p3', 'p4'].map(id => ({ id, name: id.toUpperCase() }));
+    s.starterIds = ['p1', 'p2', 'p3', 'p4'];
+    s = Engine.resetMatch(s, 0);
+    s = Engine.start(s, 0);
+    s = Engine.recordScore(s, 'us', 'p1', 1, 60000);
+
+    // Adding a 5th player via applySetup mid-game with starterIds still length 4 MUST succeed without resetting!
+    const draft = {
+      sport: 'soccer',
+      fieldSize: 5,
+      periodMinutes: 8,
+      periodCount: 4,
+      roster: [...s.roster, { id: 'p5', name: 'Late5' }],
+      starterIds: ['p1', 'p2', 'p3', 'p4']
+    };
+    const res = Engine.applySetup(s, draft, 120000);
+    assert.strictEqual(res.ok, true, `Expected applySetup mid-game to succeed, errors: ${JSON.stringify(res.errors)}`);
+    assert.strictEqual(res.state.roster.length, 5);
+    assert.strictEqual(res.state.match.score.us, 1);
+    assert.strictEqual(res.state.match.players.p5.arrivedAtMs, 120000);
+    assert.strictEqual(res.state.match.players.p5.onField, false);
+  });
+
+  await t.test('applySetup pre-kickoff respects absentIds without requiring absent players as starters', () => {
+    let s = Engine.createState('soccer');
+    const draft = {
+      sport: 'soccer',
+      fieldSize: 5,
+      periodMinutes: 8,
+      periodCount: 4,
+      roster: [
+        { id: 'p1', name: 'A' },
+        { id: 'p2', name: 'B' },
+        { id: 'p3', name: 'C' },
+        { id: 'p4', name: 'D' },
+        { id: 'p5', name: 'AbsentKid' }
+      ],
+      starterIds: ['p1', 'p2', 'p3', 'p4'],
+      absentIds: ['p5']
+    };
+    const res = Engine.applySetup(s, draft, 0);
+    assert.strictEqual(res.ok, true, `Expected pre-kickoff Setup with 1 absent to pass, errors: ${JSON.stringify(res.errors)}`);
+    assert.strictEqual(res.state.match.players.p5.absent, true);
+    assert.strictEqual(res.state.match.players.p5.arrivedAtMs, null);
+    assert.strictEqual(res.state.match.players.p1.onField, true);
+  });
+});
+
