@@ -2572,6 +2572,20 @@
       }
     }
 
+    function updateSetupCounts() {
+      const absentSet = new Set(draft.absentIds || []);
+      const presentCount = draft.roster.filter(r => !absentSet.has(r.id)).length;
+      const reqStarters = Math.max(0, Math.min(draft.settings.fieldSize, presentCount));
+      const activeStartersCount = (draft.starterIds || []).filter(
+        id => !absentSet.has(id) && draft.roster.some(r => r.id === id)
+      ).length;
+
+      document.getElementById('draftRosterCount').textContent = draft.roster.length;
+      document.getElementById('draftStarterCount').textContent = activeStartersCount;
+      document.getElementById('draftTargetStarters').textContent = reqStarters;
+      return absentSet;
+    }
+
     function renderSetup() {
       const errDiv = document.getElementById('setupErrors');
       errDiv.classList.add('hidden');
@@ -2603,16 +2617,7 @@
       fieldSizeEl.disabled = matchActive;
       minutesEl.disabled = matchActive;
 
-      const absentSet = new Set(draft.absentIds || []);
-      const presentCount = draft.roster.filter(r => !absentSet.has(r.id)).length;
-      const reqStarters = Math.max(0, Math.min(draft.settings.fieldSize, presentCount));
-      const activeStartersCount = (draft.starterIds || []).filter(
-        id => !absentSet.has(id) && draft.roster.some(r => r.id === id)
-      ).length;
-
-      document.getElementById('draftRosterCount').textContent = draft.roster.length;
-      document.getElementById('draftStarterCount').textContent = activeStartersCount;
-      document.getElementById('draftTargetStarters').textContent = reqStarters;
+      const absentSet = updateSetupCounts();
 
       const list = document.getElementById('draftRosterList');
       if (matchActive) {
@@ -4055,14 +4060,17 @@
       ['draftFieldSize', 'fieldSize'],
       ['draftMinutes', 'periodMinutes']
     ].forEach(([elId, key]) => {
-      document.getElementById(elId).addEventListener('change', (e) => {
+      const el = document.getElementById(elId);
+      const syncSetting = (e) => {
         if (!draft || Engine.hasMatchActivity(state)) return;
         const val = parseInt(e.target.value, 10);
         if (!Number.isNaN(val)) {
           draft.settings[key] = val;
-          renderSetup();
+          updateSetupCounts();
         }
-      });
+      };
+      el.addEventListener('input', syncSetting);
+      el.addEventListener('change', syncSetting);
     });
 
     // Inject Rest and open-slot Enter Field/Court buttons onto bench cards
